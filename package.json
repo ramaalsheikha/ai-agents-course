@@ -1,0 +1,14 @@
+{
+  "name": "ai-agents-course",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "install:all": "npm --prefix 01-mcp-search-server install && npm --prefix 02-personal-assistant run install:all && npm --prefix 03-trip-planner-langgraph run install:all && npm --prefix 04-trip-planner-a2a run install:all"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  },
+  "dependencies": {
+    "puppeteer": "^24.39.1"
+  }
+}
