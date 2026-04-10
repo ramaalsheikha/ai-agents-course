@@ -1,6 +1,6 @@
-# AI Agents Course
+# AI Agent Engineering Course
 
-A hands-on course that progressively builds AI agent systems — from standalone tool servers to multi-agent architectures.
+This repository is created for educational purposes as part of the [AI Agent Engineering Course](https://tariqlabs.com/courses/ai-agents/) by Tariq Labs. It progressively builds AI agent systems — from standalone tool servers to multi-agent architectures.
 
 ## Projects
 
