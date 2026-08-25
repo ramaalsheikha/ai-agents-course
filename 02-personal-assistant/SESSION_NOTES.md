@@ -216,3 +216,114 @@ If it has to go public later, the cheap version is a single Worker with the agen
 3. **Consider a larger-context model.** The 24000-token window of `llama-3.3-70b-instruct-fp8-fast` is still the binding constraint behind every limit in `agent.js`.
 4. **Widen small-talk coverage as real traffic arrives.** The pattern list is a fixed set; check logs for greetings that still reach the tool loop.
 5. **Make MCP auth non-optional.** `env.MCP_AUTH_TOKEN` is currently set, but the fail-open branch means a lost secret silently unauthenticates the endpoint.
+
+---
+
+# Session 3 — 2026-08-25
+
+Scope: `02-personal-assistant` — PDF ingestion correctness.
+
+## 1. The Bug
+
+RAG answers over Arabic documents were nonsense. The stored chunks looked like this:
+
+```
+ي  العملd
+ب
+ي
+در
+ت
+```
+
+Investigation found two unrelated failures, not one, and neither was the RTL/ligature issue first assumed.
+
+**Failure A — text runs joined in content-stream order.** `PDFLoader` from `@langchain/community` joins pdf.js text items with `parsedItemSeparator: ""` and inserts a newline whenever the y-coordinate changes. For an RTL line, pdf.js emits runs in visual right-to-left order, so concatenating them left-to-right reverses the words, and the empty separator glues the remains together. Affects `تقييم التدريب للشركة مسكر ومغلف ومختوم (2).pdf`.
+
+**Failure B — no `ToUnicode` CMap.** `تقرير_التدريب_العملي_راما_الشيخة.pdf` embeds subsetted Identity-H fonts (`LFURXI+NotoNaskh`, `KPLIFR+Amiri-Bold`, `TLMVBT+NotoNaskh-Bold`) with zero `/ToUnicode` entries. The subsets keep a `cmap` table covering only 41–133 Latin codepoints; the ~1,500 Arabic glyphs are unnamed (`glyph00002`…) and `GSUB` is stripped, so there is no path from glyph ID back to a character. pdf.js, pypdf, and PyMuPDF all fail on it — the text simply is not in the file. Only rendering and OCR recovers it.
+
+Two further defects compounded the damage:
+
+- `source` metadata held the multer temp path (`/var/folders/…/1787577518924-29baee639c3558.pdf`), making citations and dedup useless.
+- Nothing deduplicated, so the same document was ingested five times.
+
+## 2. What We Built
+
+### `server/lib/arabic.js` (new)
+
+`normalizeText()` — NFKC to fold Arabic Presentation Forms (`U+FB50–FEFF`) back to base letters, then strips tatweel (`U+0640`), harakat, and bidi controls, and maps Arabic-Indic digits and punctuation to ASCII. This alone converts `ﺍﻟﺟﺎﻣﻌﺔ ﺍﻟﻬﺎﺷﻣﻳﺔ` to `الجامعة الهاشمية`. Duplicated verbatim at `worker/src/arabic.js` — the two packages cannot share a module.
+
+### `server/lib/pdf-text.js` (new)
+
+Replaces `PDFLoader`. Groups text items into lines by y-coordinate (2.5pt tolerance), decides each line's direction from the weighted `dir` of its items, then orders runs by descending x for RTL and ascending x for LTR. Spaces are inserted from the measured inter-run gap rather than assumed.
+
+`assessText()` / `assessDocument()` score the share of unmapped-glyph characters. A page above 1% is unusable; a document is unusable when under 60% of pages pass. This is the gate that catches failure B instead of silently indexing garbage.
+
+### `server/lib/ocr.js` (new)
+
+Pages failing the gate are rendered at 2× via `unpdf` + `@napi-rs/canvas` and transcribed by a local Ollama vision model (`gemma4:26b` by default). One retry, 15-minute per-page timeout, `keep_alive` set so the model is not reloaded between pages. Configurable through `OCR_FALLBACK`, `OCR_MODEL`, `OLLAMA_BASE_URL`, `OCR_SCALE`, `OCR_TIMEOUT_MS`. With `OCR_FALLBACK=off` the upload is rejected with an explanation instead.
+
+### `server/ingest.js` (rewritten)
+
+- Chunk IDs are `sha256(file bytes)#page#chunk`. Re-uploading identical bytes under any filename is detected with a single `listPaginated({ prefix })` call and skipped; `force: true` overrides.
+- Metadata per vector: `text`, `source` (real filename), `contentHash`, `pageNumber`, `chunkIndex`, `extraction` (`text` or `ocr`).
+- Embeds through `pc.inference.embed` and upserts directly, so IDs and metadata are under our control. `PineconeStore.addDocuments` was generating UUIDs, which is why nothing could ever be deduplicated or replaced.
+- Mixed documents are handled per page: clean pages keep their text layer, damaged pages are OCR'd.
+
+### `server/scripts/reindex.js`, `server/scripts/query.js` (new)
+
+`reindex.js` reports per-source metadata health and supports `purge-legacy`, `purge-temp-sources`, `purge-source`, and `ingest`. `query.js` runs a direct Pinecone query with no agent in the loop — the fastest way to separate retrieval problems from generation problems.
+
+### Query-side normalization
+
+`server/tools.js` and `worker/src/tools.js` normalize the search query through the same `normalizeText` before embedding, so a query typed with diacritics matches chunks stored without them. Both now prefix each passage with `[source, p.N]` so the model can cite.
+
+### Worker parity
+
+`worker/src/ingest.js` gained the same line-grouping and RTL ordering, uses `normalizeText`, and switched dedup from `sha256(filename)` to `sha256(file bytes)` (`sha_` id prefix). Name-based `deleteByPrefix` is retained so re-uploading a renamed edit of a document still replaces its old chunks. `listByPrefix` was factored out of `deleteByPrefix` in `worker/src/pinecone.js`.
+
+### Client
+
+`describeIngest()` in `App.jsx` distinguishes ingested from skipped-as-duplicate and reports how many pages needed OCR. Previously a skip rendered as "Uploaded and ingested successfully."
+
+### The agent was not searching at all
+
+Once retrieval was fixed, an end-to-end test showed the RAG answers were still wrong — and the server log carried no `🔍 Agent is searching Pinecone` line for either question. `What is Atlas and who is it for?` returned a confident description of "a large-scale open-source AI model developed by Meta". The agent had answered from training data without ever calling the tool.
+
+The cause was the session-2 system prompt: *"Call a tool when the user asks for information you do not already have."* That makes retrieval conditional on the model's own estimate of what it knows, and `qwen3.5:9b` was certain it knew what Atlas is.
+
+`server/agent.js` and `worker/src/agent.js` now build the system prompt per mode. The RAG prompt makes the search unconditional — call `search_knowledge_base` first, every time, for anything that is not small talk — and states explicitly that a familiar-sounding name refers to the user's own documents, not to anything in training. The small-talk exception and the markdown-image passthrough rule are unchanged.
+
+### Dependencies
+
+`@langchain/community` and `pdf-parse` removed from `server/package.json` — nothing imports them now. `unpdf` and `@napi-rs/canvas` added.
+
+## 3. Verification
+
+39 worker tests pass (10 new in `arabic.test.js`, 5 new in `ingest.test.js` covering LTR/RTL ordering, line separation, and content-hash stability).
+
+Extraction, measured:
+
+| Document | Before | After |
+|---|---|---|
+| `تقييم التدريب…pdf` | scrambled | 0% unmapped glyphs, correct Arabic, 3 chunks |
+| `تقرير_التدريب_العملي…pdf` | 14.9% unmapped glyphs | flagged unusable → 5/5 pages OCR'd → 7 chunks |
+| `Atlas_Business_Overview…pdf` | fine | fine, 12 chunks |
+
+Direct Pinecone query for `ما هي الجامعة ومتى مدة التدريب؟` now returns the correct Arabic passages at 0.41 similarity, against 0.18 for the garbage chunks. `scripts/query.js` runs this without the agent in the loop.
+
+End to end through `/api/chat` in RAG mode, after the prompt fix: both substantive questions call the tool, the Atlas answer is grounded in `Atlas_Business_Overview_NoInvestor.pdf` with no hallucination, and `Hello there!` still answers directly without a Pinecone query.
+
+## 4. Index Surgery
+
+All 68 vectors in the default namespace lacked a `contentHash` and were deleted, then the three documents were re-ingested through the new pipeline.
+
+**Unexplained:** the index held 268 vectors at the start of the session and 68 by the time the purge ran, with no delete issued against that namespace from this session. The 200 missing vectors were `Atlas_Business_Overview_NoInvestor.pdf` chunks with UUID ids. Worth confirming nothing else writes to this index.
+
+## 5. Next Steps
+
+1. **OCR is slow.** `gemma4:26b` runs half on CPU (9GB of 18GB in VRAM, 4096-token context) at roughly 4–5 minutes per page. A smaller vision model, or moving OCR to a background job with a progress endpoint, would make a 20-page upload tolerable.
+2. **The Worker has no OCR path.** It rejects PDFs without a usable text layer. Recovering them in production needs a vision model reachable from Workers AI.
+3. **`reindex.js` samples at `topK=1000`.** Fine at this corpus size; a real purge needs `listPaginated` over all IDs.
+4. **`arabic.js` is duplicated** between `server/lib/` and `worker/src/`. A shared package would prevent drift.
+5. **No agent-level test still.** The tool-call regression was found by hand, and would have been caught by a test asserting that a document question produces a `search_knowledge_base` call. This was already item 1 on the session-2 list.
+6. **`worker/src/ingest.test.js` and the session-2 worker changes are uncommitted** and were untracked when this session started.
