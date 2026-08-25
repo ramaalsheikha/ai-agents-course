@@ -66,6 +66,8 @@ const makeEnv = (replies) => {
 };
 
 const messagesOf = (env, index) => env.AI.run.mock.calls[index][1].messages;
+const lastToolMessage = (env, index) =>
+  [...messagesOf(env, index)].reverse().find((m) => m.role === "tool");
 const systemOf = (env, index) => messagesOf(env, index)[0].content;
 
 beforeEach(() => {
@@ -165,8 +167,8 @@ describe("rag retrieval", () => {
     await runAgent({ env, message: "How long was the training?", mode: "rag" });
 
     const second = messagesOf(env, 1);
-    expect(second.at(-2)).toMatchObject({ role: "assistant" });
-    expect(second.at(-1)).toMatchObject({
+    expect(second.at(-3)).toMatchObject({ role: "assistant" });
+    expect(lastToolMessage(env, 1)).toMatchObject({
       role: "tool",
       tool_call_id: "abc",
       name: "search_knowledge_base",
@@ -181,7 +183,7 @@ describe("rag retrieval", () => {
 
     await runAgent({ env, message: "What is Atlas?", mode: "rag" });
 
-    expect(messagesOf(env, 1).at(-1).content).toHaveLength(2500);
+    expect(lastToolMessage(env, 1).content).toHaveLength(2500);
   });
 
   it("reports a failing tool instead of throwing", async () => {
@@ -191,7 +193,7 @@ describe("rag retrieval", () => {
 
     const result = await runAgent({ env, message: "What is Atlas?", mode: "rag" });
 
-    expect(messagesOf(env, 1).at(-1).content).toContain("Pinecone unreachable");
+    expect(lastToolMessage(env, 1).content).toContain("Pinecone unreachable");
     expect(result.output).toBe("I could not search.");
   });
 
@@ -250,6 +252,97 @@ describe("rag retrieval", () => {
     await runAgent({ env, message: "Is it on Android?", sessionId: "s3", mode: "rag" });
 
     expect(messagesOf(env, 0).map((m) => m.content)).toContain("A multi-platform app.");
+  });
+});
+
+describe("answer language", () => {
+  it("ends the system prompt with the language rule", async () => {
+    searchHandler.mockResolvedValue("passage");
+    const env = makeEnv([toolCall("search_knowledge_base", { query: "q" }), text("done")]);
+
+    await runAgent({ env, message: "What is Atlas?", mode: "rag" });
+
+    expect(systemOf(env, 0).trimEnd().endsWith("keep their original script.")).toBe(true);
+  });
+
+  it("names Arabic explicitly after the tool results", async () => {
+    searchHandler.mockResolvedValue("Training lasted six weeks.");
+    const env = makeEnv([
+      toolCall("search_knowledge_base", { query: "training" }),
+      text("مدة التدريب ستة أسابيع."),
+    ]);
+
+    const result = await runAgent({ env, message: "ما هي مدة فترة التدريب؟", mode: "rag" });
+
+    const last = messagesOf(env, 1).at(-1);
+    expect(last.role).toBe("user");
+    expect(last.content).toContain("write your entire answer in Arabic");
+    expect(last.content).toContain("ما هي مدة فترة التدريب؟");
+    expect(result.output).toBe("مدة التدريب ستة أسابيع.");
+  });
+
+  it("places the directive after the tool result, not before it", async () => {
+    searchHandler.mockResolvedValue("passage");
+    const env = makeEnv([toolCall("search_knowledge_base", { query: "q" }), text("done")]);
+
+    await runAgent({ env, message: "ما هي مدة فترة التدريب؟", mode: "rag" });
+
+    const roles = messagesOf(env, 1).map((m) => m.role);
+    expect(roles.lastIndexOf("tool")).toBeLessThan(roles.lastIndexOf("user"));
+  });
+
+  it("does not add a directive before any tool has run", async () => {
+    const env = makeEnv([text("answer")]);
+
+    await runAgent({ env, message: "ما هي مدة فترة التدريب؟", mode: "rag" });
+
+    expect(messagesOf(env, 0).at(-1).content).toBe("ما هي مدة فترة التدريب؟");
+  });
+
+  it("keeps the directive out of saved history", async () => {
+    searchHandler.mockResolvedValue("passage");
+    const env = makeEnv([toolCall("search_knowledge_base", { query: "q" }), text("الجواب")]);
+
+    await runAgent({ env, message: "ما هي مدة فترة التدريب؟", sessionId: "ar", mode: "rag" });
+
+    expect(env.store.get("chat:rag:ar")).toEqual([
+      { role: "user", content: "ما هي مدة فترة التدريب؟" },
+      { role: "assistant", content: "الجواب" },
+    ]);
+  });
+
+  it("repeats the directive in the synthesis fallback", async () => {
+    searchHandler.mockResolvedValue("passage");
+    const env = makeEnv([
+      (model, options) =>
+        options.tools ? toolCall("search_knowledge_base", { query: "q" }) : text("الجواب النهائي"),
+    ]);
+
+    const result = await runAgent({ env, message: "ما هي مدة فترة التدريب؟", mode: "rag" });
+
+    const synthesis = env.AI.run.mock.calls.at(-1)[1].messages.at(-1).content;
+    expect(synthesis).toContain("write your entire answer in Arabic");
+    expect(result.output).toBe("الجواب النهائي");
+  });
+
+  it("quotes the question so the passages cannot be mistaken for it", async () => {
+    searchHandler.mockResolvedValue("passage");
+    const env = makeEnv([toolCall("search_knowledge_base", { query: "q" }), text("done")]);
+
+    await runAgent({ env, message: "What is Atlas?", mode: "rag" });
+
+    const directive = messagesOf(env, 1).at(-1).content;
+    expect(directive).toContain('"What is Atlas?"');
+    expect(directive).toContain("do not switch to their language");
+  });
+
+  it("asks for the question's language when it is not Arabic", async () => {
+    searchHandler.mockResolvedValue("passage");
+    const env = makeEnv([toolCall("search_knowledge_base", { query: "q" }), text("done")]);
+
+    await runAgent({ env, message: "What is Atlas?", mode: "rag" });
+
+    expect(messagesOf(env, 1).at(-1).content).toContain("in the language of that question");
   });
 });
 

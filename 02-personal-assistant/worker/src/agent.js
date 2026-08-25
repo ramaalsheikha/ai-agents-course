@@ -2,6 +2,7 @@ import { TOOLS_BY_MODE } from "./tools.js";
 import { loadMcpTools } from "./mcp.js";
 import { loadHistory, saveHistory } from "./memory.js";
 import { isSmallTalk } from "./intent.js";
+import { hasArabic } from "../../shared/arabic.js";
 
 const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_TOOL_ROUNDS = 3;
@@ -42,13 +43,25 @@ const MODE_RULES = {
 
 Call search_knowledge_base first, every time, before you answer. Do this even when the subject sounds familiar — names in these documents refer to the user's own material, not to anything you may recognise from training. Answering a document question from memory is always wrong.
 
-Each passage is prefixed with its source as [filename, p.N]. Ground every claim in the returned passages and cite the filename you used. Answer in the language the user wrote in.`,
+Each passage is prefixed with its source as [filename, p.N]. Ground every claim in the returned passages and cite the filename you used.`,
   api: `Use the web and image search tools for anything about current events, live data, or images. Answer from the tool output, not from memory.`,
   mcp: `Use the tools discovered from the MCP server for anything about current events, live data, or images. Answer from the tool output, not from memory.`,
 };
 
+const LANGUAGE_RULE = `Last rule, and it outranks the others: write your final answer in the language the user asked in. Tool results and documents are often in a different language from the question — translate what you take from them. An Arabic question gets an answer written entirely in Arabic. Only file names and verbatim quotations keep their original script.`;
+
 const buildSystemPrompt = (mode) =>
-  `${MODE_RULES[mode] ?? MODE_RULES.api}\n\n${SHARED_RULES}`;
+  `${MODE_RULES[mode] ?? MODE_RULES.api}\n\n${SHARED_RULES}\n\n${LANGUAGE_RULE}`;
+
+const languageDirective = (message) =>
+  hasArabic(message)
+    ? `The user asked: "${message}" — that question is in Arabic, so write your entire answer in Arabic. The tool results above may be in another language; translate what you take from them. Do not answer in English.`
+    : `The user asked: "${message}" — write your entire answer in the language of that question. The tool results above may be in another language; translate what you take from them and do not switch to their language.`;
+
+const withLanguageDirective = (messages, message) => [
+  ...messages,
+  { role: "user", content: languageDirective(message) },
+];
 
 const SMALL_TALK_PROMPT = `You are a helpful AI assistant. The user is greeting you or making small talk. Reply in one or two short, friendly sentences, in the same language they used. Do not mention documents, search results, or tool output. If they ask what you can do, briefly say you can answer questions about uploaded documents and search the web.`;
 
@@ -174,10 +187,11 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
   }));
 
   let output;
+  let usedTools = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     output = await runModel(env, model, {
-      messages,
+      messages: usedTools ? withLanguageDirective(messages, message) : messages,
       tools: toolSchemas,
       maxTokens: MAX_TOKENS,
     });
@@ -194,6 +208,8 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
         function: { name: call.name, arguments: JSON.stringify(call.args) },
       })),
     });
+
+    usedTools = true;
 
     const results = await Promise.all(
       calls.map(async (call) => ({ call, content: await runTool(env, tools, call) })),
@@ -217,8 +233,7 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
         ...messages,
         {
           role: "user",
-          content:
-            "Answer my original question now, using the tool results above. Reply with the final answer only. Do not call any more tools.",
+          content: `Answer my original question now, using the tool results above. Reply with the final answer only. Do not call any more tools. ${languageDirective(message)}`,
         },
       ],
       maxTokens: MAX_TOKENS,

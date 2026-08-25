@@ -23,13 +23,15 @@ const MODE_RULES = {
 
 For any question that is not small talk, call search_knowledge_base first, every time, before you answer. Do this even when the subject sounds familiar — names in these documents refer to the user's own material, not to anything you may recognise from training. Answering a document question from memory is always wrong.
 
-Each passage is prefixed with its source as [filename, p.N]. Ground every claim in the returned passages and cite the filename you used. Answer in the language the user wrote in.`,
+Each passage is prefixed with its source as [filename, p.N]. Ground every claim in the returned passages and cite the filename you used.`,
   api: `Use the web and image search tools for anything about current events, live data, or images.`,
   mcp: `Use the tools discovered from the MCP server for anything about current events, live data, or images.`,
 };
 
+const LANGUAGE_RULE = `Last rule, and it outranks the others: write your final answer in the language the user asked in. Tool results and documents are often in a different language from the question — translate what you take from them. An Arabic question gets an answer written entirely in Arabic. Only file names and verbatim quotations keep their original script.`;
+
 const buildSystemPrompt = (mode) =>
-  `${MODE_RULES[mode] ?? MODE_RULES.api}\n\n${SHARED_RULES}`;
+  `${MODE_RULES[mode] ?? MODE_RULES.api}\n\n${SHARED_RULES}\n\n${LANGUAGE_RULE}`;
 
 export async function runAgent({
   sessionId = "default",
