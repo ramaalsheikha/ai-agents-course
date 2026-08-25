@@ -483,7 +483,7 @@ All 22 carry `contentHash`, the broken-font document is present as OCR output, a
 
 ## 6. Open Items
 
-1. **Arabic questions get English answers.** `ما هي مدة فترة التدريب؟` retrieved the right Arabic passage and answered correctly — in English. The RAG prompt already ends with "Answer in the language the user wrote in"; `llama-3.3-70b-instruct-fp8-fast` is ignoring it under a long tool-result context. The small-talk path still answers Arabic in Arabic, because its prompt is short. Cheapest fix is to restate the language rule at the end of the *shared* rules block, after the tool results, rather than mid-prompt.
+1. ~~**Arabic questions get English answers.**~~ Fixed — see §8.
 2. **The duplicate-skip path is unverified end to end.** The id unification means a UI upload of an already-ingested document should now return `status: "skipped"`. No copy of the three PDFs is on disk in this repo, so this was not exercised against production. Re-upload any of the three through the UI and confirm the status line reads "already in the knowledge base".
 3. **The Worker still has no OCR path.** It rejects a PDF with no usable text layer. `تقرير_التدريب_العملي_راما_الشيخة.pdf` can only be re-ingested through `server/`, which needs local Ollama.
 4. **Server-side ingestion has no tests.** `server/lib/pdf-text.js` and `server/lib/ocr.js` are untested; the worker's equivalents are not. The server has no test runner configured at all.
@@ -499,3 +499,35 @@ All 22 carry `contentHash`, the broken-font document is present as OCR output, a
 ```
 
 Note: an external edit to `SESSION_NOTES.md` (Failure C, the §4 reconciliation, and the §5 defect report) arrived mid-session and was swept into `9b3e223` rather than committed on its own. The content is intact.
+
+## 8. Answer Language — Fixed
+
+`ما هي مدة فترة التدريب؟` retrieved the right Arabic passage and answered correctly, in English. The rule "Answer in the language the user wrote in" sat mid-prompt, ahead of the tool results, and `llama-3.3-70b-instruct-fp8-fast` dropped it once a long passage block followed. The small-talk path was unaffected because its prompt is short and carries no tool output.
+
+Two changes in `worker/src/agent.js`, mirrored in `server/agent.js` for the system-prompt half:
+
+- `LANGUAGE_RULE` now closes the system prompt, after the mode rules and the shared rules.
+- `languageDirective(message)` is appended as a final user message on every model call that follows a tool round, and to the synthesis fallback. It is added at call time via `withLanguageDirective`, so it never enters `messages` and never reaches saved history.
+
+**The first attempt regressed English.** The directive read "write your entire answer in the same language as the question above". With Arabic passages sitting between the question and the directive, the model read the nearest Arabic text as "the question above" and answered *English* prompts in Arabic — on fresh sessions, so not history contamination. The directive now quotes the question verbatim (`The user asked: "…"`) and tells the model not to switch to the tool results' language. Detection is `hasArabic(message)` from `shared/arabic.js`, which makes the Arabic branch state the target language by name rather than leaving it to inference.
+
+Verified on `e85c87c4-8a0f-4153-a05b-240d0a368ef5`, two passes over six questions, each on a fresh session:
+
+| Question | Pass 1 | Pass 2 |
+|---|---|---|
+| `tell me about business overview for Atlas` | EN | EN |
+| `tell me about folowise training` | EN | EN |
+| `what is the ESG scoring process?` | EN | EN |
+| `ما هي مدة فترة التدريب؟` | AR | AR |
+| `ما هي عملية تقييم ESG؟` / `أخبرني عن تدريب فولوايز` | AR | AR |
+| `ما هو أطلس ولمن هو موجه؟` | AR | AR |
+
+`مرحبا` still answers in Arabic and `Hello` in English through the small-talk path; `api` and `mcp` modes return 200.
+
+`npm test` in `worker/`: **70 passing**, 30 of them in `agent.test.js`. The seven new ones assert the rule closes the system prompt, that the directive lands *after* the tool message, that it quotes the question, that it is absent before any tool runs, that it stays out of saved history, and that the synthesis fallback repeats it.
+
+Deploys this session: `82846a5d` (id unification) → `75a84b1b` (first language attempt, regressed English) → `e85c87c4` (current).
+
+### Still open
+
+`أخبرني عن تدريب فولوايز` answers in Arabic but reproduces the retrieved passages close to verbatim — headings, bullet marks, and page furniture included — instead of summarising them. The RAG prompt tells the model to ground and cite, but never to write in its own words. Worth a "summarise, do not transcribe" clause next to the citation rule.
