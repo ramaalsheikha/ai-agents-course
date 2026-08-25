@@ -12,6 +12,20 @@ const MODE_LABELS = {
   mcp: "MCP",
 };
 
+const describeIngest = (data, fileName) => {
+  if (data.status === "skipped") {
+    return `${fileName} is already in the knowledge base — nothing re-ingested.`;
+  }
+
+  if (!data.chunks) return "Uploaded and ingested successfully.";
+
+  const recovered = data.ocrPages
+    ? ` ${data.ocrPages} page${data.ocrPages === 1 ? "" : "s"} recovered by OCR.`
+    : "";
+
+  return `Ingested ${data.chunks} chunks from ${fileName}.${recovered}`;
+};
+
 const MODE_DESCRIPTIONS = {
   rag: "Searches your uploaded PDFs via the Pinecone knowledge base.",
   api: "Calls SerpAPI directly from the Worker for live web and image results.",
@@ -68,9 +82,7 @@ function App() {
       const data = await ingestDocument(selectedFile);
 
       setUploadStatus({
-        text: data.chunks
-          ? `Ingested ${data.chunks} chunks from ${selectedFile.name}.`
-          : "Uploaded and ingested successfully.",
+        text: describeIngest(data, selectedFile.name),
         isError: false,
       });
       setSelectedFile(null);

@@ -75,6 +75,49 @@ export const query = async (env, vector, topK = 10) => {
   return matches;
 };
 
+export const listByPrefix = async (env, prefix, limit = Infinity) => {
+  const host = await getIndexHost(env);
+  const namespace = env.PINECONE_NAMESPACE ?? "";
+
+  const ids = [];
+  let paginationToken;
+
+  do {
+    const pageSize = Math.min(100, limit - ids.length);
+    const params = new URLSearchParams({ prefix, limit: String(pageSize) });
+    if (namespace) params.set("namespace", namespace);
+    if (paginationToken) params.set("paginationToken", paginationToken);
+
+    const res = await fetch(`https://${host}/vectors/list?${params}`, {
+      headers: headers(env.PINECONE_API_KEY),
+    });
+    if (!res.ok) throw await readError(res, "Pinecone list vectors");
+
+    const { vectors = [], pagination } = await res.json();
+    for (const vector of vectors) ids.push(vector.id);
+    paginationToken = pagination?.next;
+  } while (paginationToken && ids.length < limit);
+
+  return ids;
+};
+
+export const deleteByPrefix = async (env, prefix) => {
+  const host = await getIndexHost(env);
+  const namespace = env.PINECONE_NAMESPACE ?? "";
+  const ids = await listByPrefix(env, prefix);
+
+  for (let i = 0; i < ids.length; i += 1000) {
+    const res = await fetch(`https://${host}/vectors/delete`, {
+      method: "POST",
+      headers: headers(env.PINECONE_API_KEY),
+      body: JSON.stringify({ ids: ids.slice(i, i + 1000), namespace }),
+    });
+    if (!res.ok) throw await readError(res, "Pinecone delete vectors");
+  }
+
+  return ids.length;
+};
+
 export const upsert = async (env, vectors) => {
   const host = await getIndexHost(env);
 

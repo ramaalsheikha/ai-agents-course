@@ -55,6 +55,9 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+const decodeLatin1Filename = (name) =>
+  name ? Buffer.from(name, "latin1").toString("utf8") : "";
+
 // PDF ingestion endpoint
 app.post("/api/ingest", upload.single("file"), async (req, res) => {
   try {
@@ -62,10 +65,18 @@ app.post("/api/ingest", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Missing PDF file" });
     }
 
-    await ingestData(req.file.path);
+    const source = decodeLatin1Filename(req.file.originalname) || req.file.filename;
+    const force = req.body?.force === "true" || req.body?.force === true;
+
+    const result = await ingestData(req.file.path, {
+      source,
+      force,
+      onProgress: (event) => console.log(`[ingest] ${source}`, event),
+    });
+
     await unlink(req.file.path).catch(() => undefined);
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, ...result });
   } catch (err) {
     if (req.file?.path) {
       await unlink(req.file.path).catch(() => undefined);

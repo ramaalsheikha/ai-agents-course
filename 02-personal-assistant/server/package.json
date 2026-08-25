@@ -8,13 +8,13 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@langchain/community": "^1.0.11",
     "@langchain/core": "^1.0.8",
     "@langchain/mcp-adapters": "^0.4.0",
     "@langchain/ollama": "^0.2.0",
     "@langchain/openai": "^1.2.3",
     "@langchain/pinecone": "^1.0.1",
     "@langchain/textsplitters": "^0.1.0",
+    "@napi-rs/canvas": "^1.0.8",
     "@pinecone-database/pinecone": "^5.1.2",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
@@ -22,7 +22,7 @@
     "express-rate-limit": "^8.2.1",
     "langchain": "^1.2.16",
     "multer": "^2.0.0",
-    "pdf-parse": "^1.1.1",
+    "unpdf": "^1.8.1",
     "zod": "^3.23.8"
   }
 }
