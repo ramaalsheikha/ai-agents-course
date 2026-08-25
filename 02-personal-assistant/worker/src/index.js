@@ -2,27 +2,20 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { runAgent } from "./agent.js";
 import { ingestPdf } from "./ingest.js";
+import { isAllowedOrigin } from "./cors.js";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 const app = new Hono();
 
-const allowedOrigins = (env) =>
-  (env.CLIENT_ORIGIN ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-app.use("/api/*", (c, next) => {
-  const allowed = allowedOrigins(c.env);
-
-  return cors({
-    origin: (origin) => (allowed.includes(origin) ? origin : null),
+app.use("/api/*", (c, next) =>
+  cors({
+    origin: (origin) => (isAllowedOrigin(origin, c.env) ? origin : null),
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type"],
     maxAge: 86400,
-  })(c, next);
-});
+  })(c, next),
+);
 
 app.use("/api/*", async (c, next) => {
   if (!c.env.RATE_LIMITER) return next();

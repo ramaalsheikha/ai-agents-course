@@ -21,5 +21,6 @@ service = "mcp-search-server"
 [vars]
 AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 CLIENT_ORIGIN = "https://personal-assistant-8ve.pages.dev"
+CLIENT_ORIGIN_SUFFIXES = ".personal-assistant-8ve.pages.dev"
 PINECONE_NAMESPACE = ""
 MCP_SERVER_URL = "https://mcp-search-server.alsheikharama.workers.dev/mcp"
