@@ -12,6 +12,25 @@ import {
 // Shared checkpointer — thread IDs are namespaced per mode so histories stay separate.
 const checkpointer = new MemorySaver();
 
+const SHARED_RULES = `Do not call a tool for greetings, thanks, farewells, small talk, or questions about who you are and what you can do. Reply to those directly in one or two short sentences, in the same language the user wrote in, and never quote document or search content in them.
+
+If a tool returns nothing relevant, say so plainly instead of reporting unrelated results. Never fill the gap from memory.
+
+When a tool returns markdown image syntax like ![alt](url), you MUST include those exact markdown image tags in your response so the images render for the user. Do not describe or summarize images — pass the markdown through verbatim.`;
+
+const MODE_RULES = {
+  rag: `You are a document assistant. The only knowledge you have about the user's documents comes from the search_knowledge_base tool.
+
+For any question that is not small talk, call search_knowledge_base first, every time, before you answer. Do this even when the subject sounds familiar — names in these documents refer to the user's own material, not to anything you may recognise from training. Answering a document question from memory is always wrong.
+
+Each passage is prefixed with its source as [filename, p.N]. Ground every claim in the returned passages and cite the filename you used. Answer in the language the user wrote in.`,
+  api: `Use the web and image search tools for anything about current events, live data, or images.`,
+  mcp: `Use the tools discovered from the MCP server for anything about current events, live data, or images.`,
+};
+
+const buildSystemPrompt = (mode) =>
+  `${MODE_RULES[mode] ?? MODE_RULES.api}\n\n${SHARED_RULES}`;
+
 export async function runAgent({
   sessionId = "default",
   message,
@@ -89,15 +108,7 @@ export async function runAgent({
       model,
       tools,
       checkpointer,
-      systemPrompt: `You are a helpful AI assistant with access to tools.
-
-Call a tool when the user asks for information you do not already have: facts from the uploaded documents, current events, web results, or images. Answer from the tool output, not from memory.
-
-Do not call a tool for greetings, thanks, farewells, small talk, or questions about who you are and what you can do. Reply to those directly in one or two short sentences, in the same language the user wrote in, and never quote document or search content in them.
-
-If a tool returns nothing relevant, say so plainly instead of reporting unrelated results.
-
-When a tool returns markdown image syntax like ![alt](url), you MUST include those exact markdown image tags in your response so the images render for the user. Do not describe or summarize images — pass the markdown through verbatim.`,
+      systemPrompt: buildSystemPrompt(mode),
     });
 
     console.log(`🤖 Running agent for: "${message}"`);

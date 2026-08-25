@@ -33,15 +33,22 @@ const trimToBudget = (messages, budget = MAX_INPUT_TOKENS) => {
   return [system, ...kept];
 };
 
-const SYSTEM_PROMPT = `You are a helpful AI assistant with access to tools.
-
-Call a tool when the user asks for information you do not already have: facts from the uploaded documents, current events, web results, or images. Answer from the tool output, not from memory.
-
-Do not call a tool for greetings, thanks, farewells, small talk, or questions about who you are and what you can do. Reply to those directly in one or two short sentences, in the same language the user wrote in, and never quote document or search content in them.
-
-If a tool returns nothing relevant, say so plainly instead of reporting unrelated results.
+const SHARED_RULES = `If a tool returns nothing relevant, say so plainly instead of reporting unrelated results. Never fill the gap from memory.
 
 When a tool returns markdown image syntax like ![alt](url), you MUST include those exact markdown image tags in your response so the images render for the user. Do not describe or summarize images — pass the markdown through verbatim.`;
+
+const MODE_RULES = {
+  rag: `You are a document assistant. The only knowledge you have about the user's documents comes from the search_knowledge_base tool.
+
+Call search_knowledge_base first, every time, before you answer. Do this even when the subject sounds familiar — names in these documents refer to the user's own material, not to anything you may recognise from training. Answering a document question from memory is always wrong.
+
+Each passage is prefixed with its source as [filename, p.N]. Ground every claim in the returned passages and cite the filename you used. Answer in the language the user wrote in.`,
+  api: `Use the web and image search tools for anything about current events, live data, or images. Answer from the tool output, not from memory.`,
+  mcp: `Use the tools discovered from the MCP server for anything about current events, live data, or images. Answer from the tool output, not from memory.`,
+};
+
+const buildSystemPrompt = (mode) =>
+  `${MODE_RULES[mode] ?? MODE_RULES.api}\n\n${SHARED_RULES}`;
 
 const SMALL_TALK_PROMPT = `You are a helpful AI assistant. The user is greeting you or making small talk. Reply in one or two short, friendly sentences, in the same language they used. Do not mention documents, search results, or tool output. If they ask what you can do, briefly say you can answer questions about uploaded documents and search the web.`;
 
@@ -152,7 +159,7 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
   if (!tools || tools.length === 0) throw new Error(`Unknown or unavailable mode: ${mode}`);
 
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: buildSystemPrompt(mode) },
     ...history,
     { role: "user", content: message },
   ];

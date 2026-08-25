@@ -79,13 +79,14 @@ app.post("/api/ingest", async (c) => {
       });
     }
 
-    const { chunks } = await ingestPdf(c.env, {
+    const result = await ingestPdf(c.env, {
       arrayBuffer,
       source: file.name ?? "document.pdf",
       objectKey,
+      force: form.get("force") === "true",
     });
 
-    return c.json({ ok: true, chunks, objectKey });
+    return c.json({ ok: true, objectKey, ...result });
   } catch (error) {
     console.error("ingest failed", error);
     return c.json({ error: error.message }, 500);
