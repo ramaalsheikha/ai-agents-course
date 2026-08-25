@@ -3,6 +3,7 @@ import { z } from "zod";
 import { PineconeStore } from "@langchain/pinecone";
 import { PineconeEmbeddings } from "@langchain/pinecone";
 import { Pinecone as PineconeClient } from "@pinecone-database/pinecone";
+import { normalizeText } from "./lib/arabic.js";
 
 let vectorStore;
 
@@ -34,26 +35,26 @@ const getVectorStore = async () => {
   return vectorStore;
 };
 
+const formatResult = (doc) => {
+  const { source, pageNumber } = doc.metadata ?? {};
+  const citation = source ? `${source}${pageNumber ? `, p.${pageNumber}` : ""}` : "unknown source";
+
+  return `[${citation}]\n${doc.pageContent}`;
+};
+
 export const searchKnowledgeBase = tool(
   async ({ query }) => {
-    console.log(`🔍 Agent is searching Pinecone for: "${query}"`);
+    const normalized = normalizeText(query);
+    console.log(`🔍 Agent is searching Pinecone for: "${normalized}"`);
 
     const store = await getVectorStore();
-
-    // We fetch the top 10 most similar chunks
-    const results = await store.similaritySearch(query, 10);
-
-    // For demo purposes
-    results.forEach((r, i) => {
-      console.log(`Result ${i + 1}:`, r.pageContent.slice(0, 200));
-    });
+    const results = await store.similaritySearch(normalized, 10);
 
     if (results.length === 0) {
       return "No relevant information found in the knowledge base.";
     }
 
-    // Join the chunks so the LLM can read them as one context block
-    return results.map((doc) => doc.pageContent).join("\n\n---\n\n");
+    return results.map(formatResult).join("\n\n---\n\n");
   },
   {
     name: "search_knowledge_base",

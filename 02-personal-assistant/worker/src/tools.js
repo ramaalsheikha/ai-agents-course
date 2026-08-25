@@ -1,4 +1,5 @@
 import { embed, query } from "./pinecone.js";
+import { normalizeText } from "./arabic.js";
 
 const SERPAPI_ENDPOINT = "https://serpapi.com/search.json";
 
@@ -36,12 +37,19 @@ export const searchKnowledgeBase = {
     required: ["query"],
   },
   handler: async (env, { query: searchQuery }) => {
-    const [vector] = await embed(env, [searchQuery], "query");
+    const [vector] = await embed(env, [normalizeText(searchQuery)], "query");
     const matches = await query(env, vector, 4);
 
     const passages = matches
-      .map((match) => match.metadata?.text)
-      .filter(Boolean);
+      .filter((match) => match.metadata?.text)
+      .map((match) => {
+        const { source, pageNumber, text } = match.metadata;
+        const citation = source
+          ? `${source}${pageNumber ? `, p.${pageNumber}` : ""}`
+          : "unknown source";
+
+        return `[${citation}]\n${text}`;
+      });
 
     if (passages.length === 0) {
       return "No relevant information found in the knowledge base.";
