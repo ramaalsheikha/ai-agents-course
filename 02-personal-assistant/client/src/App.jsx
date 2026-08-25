@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { ingestDocument, sendChat } from "./api";
+import { toFriendlyMessage } from "./errors";
 import "./App.css";
+
+const MODES = ["rag", "api", "mcp"];
 
 const MODE_LABELS = {
   rag: "RAG",
   api: "API",
   mcp: "MCP",
-  "mcp-stdio": "MCP stdio",
 };
 
 const MODE_DESCRIPTIONS = {
-  rag: "Searches your uploaded PDFs via Pinecone knowledge base.",
-  api: "Calls SerpAPI REST directly — tool logic lives in the agent process.",
-  mcp: "Connects to the MCP server running on port 3002 — agent discovers tools at runtime over HTTP.",
-  "mcp-stdio": "Spawns the MCP server as a child process — agent communicates via stdin/stdout pipes.",
+  rag: "Searches your uploaded PDFs via the Pinecone knowledge base.",
+  api: "Calls SerpAPI directly from the Worker for live web and image results.",
+  mcp: "Discovers tools at runtime from the MCP server Worker over JSON-RPC.",
 };
 
 function App() {
@@ -40,17 +42,7 @@ function App() {
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
 
     try {
-      const response = await fetch("http://localhost:3001/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, mode }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Chat request failed");
-      }
+      const data = await sendChat({ message: trimmed, mode });
 
       setMessages((prev) => [
         ...prev,
@@ -59,7 +51,7 @@ function App() {
     } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: "ai", text: err?.message ?? "Chat request failed", mode },
+        { role: "ai", text: toFriendlyMessage(err), isError: true },
       ]);
     } finally {
       setLoading(false);
@@ -73,24 +65,17 @@ function App() {
     setUploadStatus(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
+      const data = await ingestDocument(selectedFile);
 
-      const response = await fetch("http://localhost:3001/api/ingest", {
-        method: "POST",
-        body: formData,
+      setUploadStatus({
+        text: data.chunks
+          ? `Ingested ${data.chunks} chunks from ${selectedFile.name}.`
+          : "Uploaded and ingested successfully.",
+        isError: false,
       });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Upload failed");
-      }
-
-      setUploadStatus("Uploaded and ingested successfully.");
       setSelectedFile(null);
     } catch (err) {
-      setUploadStatus(err?.message ?? "Upload failed");
+      setUploadStatus({ text: toFriendlyMessage(err), isError: true });
     } finally {
       setUploading(false);
     }
@@ -110,7 +95,7 @@ function App() {
           <div className="appTitle">Agentic Personal Assistant</div>
           <div className="appSubtitle">Upload PDFs, then chat with your knowledge base.</div>
           <div className="modeToggle">
-            {["rag", "api", "mcp", "mcp-stdio"].map((m) => (
+            {MODES.map((m) => (
               <button
                 key={m}
                 className={`modeButton modeButton--${m}${mode === m ? " isActive" : ""}`}
@@ -148,7 +133,12 @@ function App() {
               {selectedFile ? selectedFile.name : "No file selected"}
             </div>
           </div>
-          {uploadStatus && <div className="uploadStatus">{uploadStatus}</div>}
+          {uploadStatus && (
+            <div className={`uploadStatus${uploadStatus.isError ? " isError" : ""}`}>
+              {uploadStatus.isError && <span className="warningIcon">⚠️</span>}
+              {uploadStatus.text}
+            </div>
+          )}
         </section>
 
         <section className="chatPanel">
@@ -161,13 +151,24 @@ function App() {
 
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "messageRow isUser" : "messageRow isAi"}>
-                <div className="messageBubble">
-                  {m.role === "ai" && m.mode && (
+                <div className={`messageBubble${m.isError ? " isError" : ""}`}>
+                  {m.role === "ai" && m.mode && !m.isError && (
                     <span className={`modeBadge modeBadge--${m.mode}`}>
                       {MODE_LABELS[m.mode] ?? m.mode}
                     </span>
                   )}
-                  {m.role === "ai" ? <ReactMarkdown>{m.text}</ReactMarkdown> : m.text}
+                  {m.isError ? (
+                    <div className="errorContent">
+                      <span className="warningIcon" role="img" aria-label="Warning">
+                        ⚠️
+                      </span>
+                      <span>{m.text}</span>
+                    </div>
+                  ) : m.role === "ai" ? (
+                    <ReactMarkdown>{m.text}</ReactMarkdown>
+                  ) : (
+                    m.text
+                  )}
                 </div>
               </div>
             ))}

@@ -323,3 +323,35 @@
   margin: 6px 0;
 }
 
+
+/* ── Error / warning states ──────────────────────────────── */
+
+.messageBubble.isError,
+.messageRow.isAi .messageBubble.isError {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid #ef4444;
+  color: #fecaca;
+}
+
+.errorContent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.uploadStatus.isError {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #ef4444;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #fecaca;
+}
