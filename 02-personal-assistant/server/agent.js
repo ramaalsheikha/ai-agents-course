@@ -26,15 +26,15 @@ export async function runAgent({
         In a real application, you'd likely want a more capable model for better reasoning and tool use.
         To enable using OpenAI models, you'd switch to ChatOpenAI and ensure your environment is set up with OpenAI API keys.
      */
-    const model = new ChatOpenAI({
-      model: "gpt-4o",
+    const model = new ChatOllama({
+      model: "qwen3.5:9b",
       temperature: 0,
+      think: false,
     });
 
-    // const model = new ChatOllama({
-    //   model: "qwen3.5:2b",
+    // const model = new ChatOpenAI({
+    //   model: "gpt-4o",
     //   temperature: 0,
-    //   think: false,
     // });
 
     let tools;
@@ -89,7 +89,13 @@ export async function runAgent({
       model,
       tools,
       checkpointer,
-      systemPrompt: `You are a helpful AI assistant. You have access to tools — always use them to answer questions. Never answer from memory alone when a tool is available. If a question requires current or factual information, call the appropriate tool first, then respond based on the tool's output.
+      systemPrompt: `You are a helpful AI assistant with access to tools.
+
+Call a tool when the user asks for information you do not already have: facts from the uploaded documents, current events, web results, or images. Answer from the tool output, not from memory.
+
+Do not call a tool for greetings, thanks, farewells, small talk, or questions about who you are and what you can do. Reply to those directly in one or two short sentences, in the same language the user wrote in, and never quote document or search content in them.
+
+If a tool returns nothing relevant, say so plainly instead of reporting unrelated results.
 
 When a tool returns markdown image syntax like ![alt](url), you MUST include those exact markdown image tags in your response so the images render for the user. Do not describe or summarize images — pass the markdown through verbatim.`,
     });
