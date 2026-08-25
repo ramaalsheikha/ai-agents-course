@@ -83,49 +83,63 @@ Root cause: the tool loop appended assistant messages and tool results to `messa
 
 # Session 2 — 2026-08-25
 
+Scope: `02-personal-assistant`, plus repo-wide git hygiene and `01-mcp-search-server/worker`.
+
 ## 1. What We Built
 
 ### Small talk no longer triggers tools
 
-`Hello` was answered with document chunks. The system prompt said "always use them to answer questions. Never answer from memory alone when a tool is available", so the model dutifully searched Pinecone for a greeting and the corpus returned whatever it had (AlgoArabTech, Folowise training-period material).
+`Hello` was answered with document chunks. The session-1 system prompt said "always use them to answer questions. Never answer from memory alone when a tool is available", so the model searched Pinecone for a greeting and the corpus returned whatever it had (AlgoArabTech, Folowise training-period material).
 
 Fixed in two layers.
 
-**`worker/src/intent.js`** (new) — `isSmallTalk(message)` normalizes the text (lowercase, strip Arabic diacritics, fold `أإآ→ا`, `ى→ي`, `ة→ه`, drop punctuation) and full-matches it against anchored patterns for greetings, thanks, farewells, acknowledgements, and capability questions, in English and Arabic. Capped at 80 characters, so anything longer than a bare greeting falls through to the normal agent path.
+**`worker/src/intent.js`** (new) — `isSmallTalk(message)` normalizes the text (lowercase, strip Arabic diacritics, fold `أإآ→ا`, `ى→ي`, `ة→ه`, drop punctuation, collapse whitespace) and full-matches it against anchored patterns for greetings, thanks, farewells, acknowledgements, and capability questions, in English and Arabic. Capped at 80 characters.
 
-**`worker/src/agent.js`** — when `isSmallTalk` matches, `runAgent` short-circuits before tools are loaded (skipping the MCP fetch entirely) and answers with `SMALL_TALK_PROMPT`, using only the last 4 history messages and 160 max tokens. History is still saved so follow-ups keep context. Mode validation moved ahead of the short-circuit so an unknown mode still throws.
+**`worker/src/agent.js`** — when `isSmallTalk` matches, `runAgent` short-circuits *before* tools are loaded, so a greeting costs no Pinecone query and no MCP fetch. It answers with `SMALL_TALK_PROMPT`, using only the last 4 history messages and 160 max tokens, and still saves history so follow-ups keep context. Mode validation moved ahead of the short-circuit (`mode !== "mcp" && !TOOLS_BY_MODE[mode]`) so an unknown mode still throws.
 
-**System prompt rewritten** in both `worker/src/agent.js` and `server/agent.js` — tool use is now scoped to information the model does not have, greetings and capability questions are answered directly in the user's language, and an empty tool result must be reported as such rather than padded with unrelated content.
+**System prompt rewritten** in both `worker/src/agent.js` and `server/agent.js` — tool use is scoped to information the model does not have; greetings, thanks, farewells, and capability questions are answered directly in the user's language; an empty tool result must be reported as empty rather than padded with unrelated content. The markdown-image passthrough rule is unchanged.
 
 ### Context-length retry (defense in depth)
 
-**`worker/src/agent.js`** — `runModel(env, model, {messages, tools, maxTokens})` wraps every `AI.run` call. It trims to budget, and on a context-length failure (`8007` or `maximum context length`) retries up to 3 times with the budget multiplied by 0.6 each round. A prompt that still overflows after trimming now costs a slower answer instead of a 500.
+**`worker/src/agent.js`** — `runModel(env, model, {messages, tools, maxTokens})` now wraps every `AI.run` call. It trims to budget, and on a context-length failure (`8007` or `maximum context length`) retries up to 3 times with the budget multiplied by 0.6 each round. A prompt that still overflows after `trimToBudget` costs a slower answer instead of a 500. Both the tool loop and the synthesis fallback go through it.
 
 ### Preview-origin CORS
 
-**`worker/src/cors.js`** (new) — `isAllowedOrigin(origin, env)` keeps exact matching on `CLIENT_ORIGIN` and adds an opt-in suffix match on the new `CLIENT_ORIGIN_SUFFIXES` var. A suffix is normalized to a leading dot and the origin must be `https:`, so `evil-personal-assistant-8ve.pages.dev` is rejected while `<hash>.personal-assistant-8ve.pages.dev` is allowed. `worker/src/index.js` now delegates to it.
-
-### Tests
-
-Vitest added to both packages (`npm test` → `vitest run`).
-
-- `client/src/errors.test.js` — 15 tests over `extractErrorCode` and the full `toFriendlyMessage` fallback chain, including code-beats-status precedence and the `status: 0` network case.
-- `worker/src/intent.test.js` — 7 tests, including Arabic greetings and the negative cases (`ما هي مدة فترة التدريب؟`, `hello, what does the document say about pricing?`).
-- `worker/src/cors.test.js` — 8 tests, including the lookalike-domain and non-https rejections.
+**`worker/src/cors.js`** (new) — `isAllowedOrigin(origin, env)` keeps exact matching on `CLIENT_ORIGIN` and adds an opt-in suffix match on the new `CLIENT_ORIGIN_SUFFIXES` var. A configured suffix is normalized to a leading dot and the origin must be `https:`. `worker/src/index.js` delegates to it; the inline `allowedOrigins` helper is gone.
 
 ### Error detail logging
 
-**`client/src/api.js`** — both throw paths now go through `logFailure(path, error)`, which `console.error`s status, code, and raw detail. Diagnosing a browser failure no longer requires a `wrangler tail` session.
+**`client/src/api.js`** — both throw paths route through `logFailure(path, error)`, which `console.error`s status, code, and raw detail. Diagnosing a browser-side failure no longer needs a `wrangler tail` session.
+
+### Tests
+
+Vitest added to both packages (`npm test` → `vitest run`, `npm run test:watch` → `vitest`).
+
+- `client/src/errors.test.js` — 15 tests over `extractErrorCode` and the whole `toFriendlyMessage` fallback chain, including code-beats-status precedence and the `status: 0` network case.
+- `worker/src/intent.test.js` — 7 tests, including Arabic greetings and the negatives (`ما هي مدة فترة التدريب؟`, `hello, what does the document say about pricing?`).
+- `worker/src/cors.test.js` — 8 tests, including the lookalike-domain and non-https rejections.
+
+### Repo hygiene
+
+- `01-mcp-search-server/worker/` committed. It was deployed and service-bound to the assistant Worker while its source sat untracked.
+- `04-trip-planner-a2a/package-lock.json` committed — `04/package.json` was tracked without its lockfile, the only workspace missing one.
+- `.playwright-mcp/` and `app-dashboard.yml` added to the root `.gitignore`. `app-dashboard.yml` is a Playwright accessibility snapshot of an unrelated Qrindo dashboard; it was gitignored rather than deleted.
 
 ## 2. Key Decisions
 
-**Small talk is caught by code, not only by the prompt.** A prompt change alone leaves the behavior at the model's discretion; a deterministic pre-check guarantees no tool call, no Pinecone query, and no MCP fetch for a greeting. The prompt change is the fallback for phrasings the patterns miss.
+**Small talk is caught by code, not only by the prompt.** A prompt change alone leaves the behavior at the model's discretion. A deterministic pre-check guarantees no tool call, no Pinecone query, and no MCP fetch for a greeting. The prompt change is the fallback for phrasings the patterns miss.
 
-**Patterns are anchored and length-capped.** `^...$` matching on the normalized string means `hello, what does the document say about pricing?` is not small talk. The 80-character cap is a second guard against a greeting-prefixed real question slipping through.
+**Patterns are anchored and length-capped.** `^...$` matching on the normalized string keeps `hello, what does the document say about pricing?` out of the small-talk path. The 80-character cap is a second guard against a greeting-prefixed real question.
 
-**CORS suffix matching is opt-in and requires a leading dot.** `endsWith(".personal-assistant-8ve.pages.dev")` cannot be satisfied by a project merely ending in those words, and Pages project names are unique per account, so the widened surface is exactly this project's own preview deployments.
+**The short-circuit runs before tool loading, not after.** Placing it earlier is what saves the MCP round trip. Mode validation had to move ahead of it so error behavior for an unknown mode did not change.
+
+**CORS suffix matching is opt-in and requires a leading dot.** `endsWith(".personal-assistant-8ve.pages.dev")` cannot be satisfied by a project merely ending in those words, and Pages project names are unique per account, so the widened surface is exactly this project's own preview deployments. Verified against `evil-personal-assistant-8ve.pages.dev`.
 
 **Retry, not a lower ceiling.** Lowering `MAX_INPUT_TOKENS` outright would waste context on every normal request. Retrying with a smaller budget only pays the cost when an overflow actually happens.
+
+**Origin matching and intent detection were extracted into modules so they could be tested.** Neither was worth a module on size alone; both were worth it to get them under test without booting a Worker.
+
+**04 stays local.** See "Open question resolved" below.
 
 ## 3. Current State
 
@@ -140,32 +154,65 @@ Vitest added to both packages (`npm test` → `vitest run`).
 | Worker version | `bc507c24-3776-41c3-ac16-b26a27d37e13` |
 | Client bundle | `index-bymREW6j.js` |
 
-### Verified
+### Verified against production
 
 - `GET /api/health` → 200
-- `POST /api/chat` `rag` + `Hello` → `"Hello, it's nice to meet you. How can I help you today?"` — no document content
-- `POST /api/chat` `rag` + `مرحبا` → `"مرحبا، كيف يمكنني مساعدتك اليوم؟"`
-- `POST /api/chat` `rag` + real document question → 200, answers from the corpus
-- `POST /api/chat` `api` → 200 · `mcp` → 200
-- CORS preflight: production origin allowed, preview origin allowed, `evil-personal-assistant-8ve.pages.dev` and `attacker.example.com` both rejected
+- `rag` + `Hello` → `"Hello, it's nice to meet you. How can I help you today?"` — no document content
+- `rag` + `مرحبا` → `"مرحبا، كيف يمكنني مساعدتك اليوم؟"`
+- `rag` + a real document question → 200, answers from the corpus
+- `api` → 200 · `mcp` → 200
+- CORS preflight: production origin allowed, preview origin allowed, `evil-personal-assistant-8ve.pages.dev` rejected, `attacker.example.com` rejected
+- MCP server without an `Authorization` header → `401 Unauthorized`, confirming `MCP_AUTH_TOKEN` is set in production. Worth re-checking after any secret rotation: `01-mcp-search-server/worker/src/index.js:122` returns `true` when the token is unset, so a missing secret opens the endpoint silently.
+- Production Pages serves `index-bymREW6j.js` with the correct `VITE_API_URL`
 - `npm test` → 15 client tests, 15 worker tests, all passing
-- Production Pages serves the new bundle with the correct `VITE_API_URL`
+
+### File states
+
+```
+worker/src/intent.js          new    isSmallTalk
+worker/src/intent.test.js     new    7 tests
+worker/src/cors.js            new    isAllowedOrigin
+worker/src/cors.test.js       new    8 tests
+worker/src/agent.js           mod    runModel retry, small-talk short-circuit, prompts
+worker/src/index.js           mod    delegates CORS to cors.js
+worker/wrangler.toml          mod    CLIENT_ORIGIN_SUFFIXES
+worker/package.json           mod    vitest, test scripts
+server/agent.js               mod    system prompt synced
+client/src/api.js             mod    logFailure
+client/src/errors.test.js     new    15 tests
+client/package.json           mod    vitest, test scripts
+.gitignore                    mod    .playwright-mcp/, app-dashboard.yml
+01-mcp-search-server/worker/  new    committed, was deployed but untracked
+```
 
 ### Commits
 
 ```
+025eb2c feat(mcp): add Cloudflare Worker for the MCP search server
+ff278eb chore: ignore Playwright MCP snapshot output
+7925e21 docs(assistant): record session 2 changes and verification
 bbc5289 feat(assistant): allow Pages preview origins through CORS
 61027d3 fix(assistant): stop calling tools for greetings and small talk
 6bbc1a5 feat(assistant): show friendly errors instead of raw provider output
 4722694 feat(assistant): add Cloudflare Workers API and deploy setup
 ```
 
-Everything under `02-personal-assistant/` is committed. Still untracked at the repo root: `01-mcp-search-server/worker/` (the deployed MCP server), `.playwright-mcp/`, `04-trip-planner-a2a/package-lock.json`, `app-dashboard.yml`.
+Working tree is clean. Nothing untracked.
 
-## 4. Next Steps
+## 4. Open Question Resolved — deploy 04, or keep it local?
 
-1. **Commit `01-mcp-search-server/worker/`.** It is deployed and bound to the assistant Worker via a service binding, but its source is untracked.
-2. **Gitignore `.playwright-mcp/`.** Tool output, not source.
-3. **Verify RAG answer quality at `topK=4`.** Still open from session 1. If answers thin out as the corpus grows, raise `topK` and lower `MAX_TOOL_RESULT_CHARS` rather than removing the cap.
-4. **Consider a larger-context model.** The 24000-token window is still the binding constraint on every limit in `agent.js`.
-5. **Add an agent-level test.** `runAgent` is only covered indirectly; a fake `env.AI` would let the small-talk short-circuit and the retry path be asserted without a deploy.
+**Keep `04-trip-planner-a2a` local.**
+
+1. The architecture is the lesson. 04 teaches A2A: four independent processes, agent cards at `/.well-known/agent.json`, JSON-RPC `tasks/send`, discovery. Collapsing it into Workers plus service bindings hides the thing it demonstrates.
+2. It is a rewrite, not a deploy. `@langchain/*` and `ChatOllama` do not port to Workers. Project 02 needed the LangChain agent loop hand-rolled against Workers AI; 04 would repeat that across three agents and the orchestrator, with the SSE stream on top.
+3. The cost shape is poor. One request fans out to three agent calls. Local Ollama at `qwen3.5:2b` is free; on Workers AI each plan bills neurons three times, on the same account already serving 02.
+
+If it has to go public later, the cheap version is a single Worker with the agents on separate routes behind service bindings and Workers AI replacing Ollama — protocol preserved, one deploy target.
+
+## 5. Next Steps
+
+1. **Add an agent-level test.** `runAgent` is only covered indirectly. A fake `env.AI` would let the small-talk short-circuit and the 8007 retry path be asserted without a deploy. This is the highest-value item left.
+2. **Verify RAG answer quality at `topK=4`.** Open since session 1. If answers thin out as the corpus grows, raise `topK` and lower `MAX_TOOL_RESULT_CHARS` to compensate rather than removing the cap.
+3. **Consider a larger-context model.** The 24000-token window of `llama-3.3-70b-instruct-fp8-fast` is still the binding constraint behind every limit in `agent.js`.
+4. **Widen small-talk coverage as real traffic arrives.** The pattern list is a fixed set; check logs for greetings that still reach the tool loop.
+5. **Make MCP auth non-optional.** `env.MCP_AUTH_TOKEN` is currently set, but the fail-open branch means a lost secret silently unauthenticates the endpoint.
