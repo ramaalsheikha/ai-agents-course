@@ -79,6 +79,54 @@ Root cause: the tool loop appended assistant messages and tool results to `messa
 
 ---
 
+---
+
+# Session 2 — 2026-08-25
+
+## 1. What We Built
+
+### Small talk no longer triggers tools
+
+`Hello` was answered with document chunks. The system prompt said "always use them to answer questions. Never answer from memory alone when a tool is available", so the model dutifully searched Pinecone for a greeting and the corpus returned whatever it had (AlgoArabTech, Folowise training-period material).
+
+Fixed in two layers.
+
+**`worker/src/intent.js`** (new) — `isSmallTalk(message)` normalizes the text (lowercase, strip Arabic diacritics, fold `أإآ→ا`, `ى→ي`, `ة→ه`, drop punctuation) and full-matches it against anchored patterns for greetings, thanks, farewells, acknowledgements, and capability questions, in English and Arabic. Capped at 80 characters, so anything longer than a bare greeting falls through to the normal agent path.
+
+**`worker/src/agent.js`** — when `isSmallTalk` matches, `runAgent` short-circuits before tools are loaded (skipping the MCP fetch entirely) and answers with `SMALL_TALK_PROMPT`, using only the last 4 history messages and 160 max tokens. History is still saved so follow-ups keep context. Mode validation moved ahead of the short-circuit so an unknown mode still throws.
+
+**System prompt rewritten** in both `worker/src/agent.js` and `server/agent.js` — tool use is now scoped to information the model does not have, greetings and capability questions are answered directly in the user's language, and an empty tool result must be reported as such rather than padded with unrelated content.
+
+### Context-length retry (defense in depth)
+
+**`worker/src/agent.js`** — `runModel(env, model, {messages, tools, maxTokens})` wraps every `AI.run` call. It trims to budget, and on a context-length failure (`8007` or `maximum context length`) retries up to 3 times with the budget multiplied by 0.6 each round. A prompt that still overflows after trimming now costs a slower answer instead of a 500.
+
+### Preview-origin CORS
+
+**`worker/src/cors.js`** (new) — `isAllowedOrigin(origin, env)` keeps exact matching on `CLIENT_ORIGIN` and adds an opt-in suffix match on the new `CLIENT_ORIGIN_SUFFIXES` var. A suffix is normalized to a leading dot and the origin must be `https:`, so `evil-personal-assistant-8ve.pages.dev` is rejected while `<hash>.personal-assistant-8ve.pages.dev` is allowed. `worker/src/index.js` now delegates to it.
+
+### Tests
+
+Vitest added to both packages (`npm test` → `vitest run`).
+
+- `client/src/errors.test.js` — 15 tests over `extractErrorCode` and the full `toFriendlyMessage` fallback chain, including code-beats-status precedence and the `status: 0` network case.
+- `worker/src/intent.test.js` — 7 tests, including Arabic greetings and the negative cases (`ما هي مدة فترة التدريب؟`, `hello, what does the document say about pricing?`).
+- `worker/src/cors.test.js` — 8 tests, including the lookalike-domain and non-https rejections.
+
+### Error detail logging
+
+**`client/src/api.js`** — both throw paths now go through `logFailure(path, error)`, which `console.error`s status, code, and raw detail. Diagnosing a browser failure no longer requires a `wrangler tail` session.
+
+## 2. Key Decisions
+
+**Small talk is caught by code, not only by the prompt.** A prompt change alone leaves the behavior at the model's discretion; a deterministic pre-check guarantees no tool call, no Pinecone query, and no MCP fetch for a greeting. The prompt change is the fallback for phrasings the patterns miss.
+
+**Patterns are anchored and length-capped.** `^...$` matching on the normalized string means `hello, what does the document say about pricing?` is not small talk. The 80-character cap is a second guard against a greeting-prefixed real question slipping through.
+
+**CORS suffix matching is opt-in and requires a leading dot.** `endsWith(".personal-assistant-8ve.pages.dev")` cannot be satisfied by a project merely ending in those words, and Pages project names are unique per account, so the widened surface is exactly this project's own preview deployments.
+
+**Retry, not a lower ceiling.** Lowering `MAX_INPUT_TOKENS` outright would waste context on every normal request. Retrying with a smaller budget only pays the cost when an overflow actually happens.
+
 ## 3. Current State
 
 ### Deployed
@@ -86,54 +134,38 @@ Root cause: the tool loop appended assistant messages and tool results to `messa
 | Component | URL / ID |
 |---|---|
 | Frontend (production) | https://personal-assistant-8ve.pages.dev |
-| Frontend (preview, this session) | https://8007c40f.personal-assistant-8ve.pages.dev |
+| Frontend (preview, this session) | https://70552469.personal-assistant-8ve.pages.dev |
 | Worker API | https://personal-assistant-api.alsheikharama.workers.dev |
-| Worker version | `4820af5c-18ae-4b76-981d-720d55984ebb` |
-| Client bundle | `index-Cehqpf6E.js` |
+| MCP server | https://mcp-search-server.alsheikharama.workers.dev/mcp |
+| Worker version | `bc507c24-3776-41c3-ac16-b26a27d37e13` |
+| Client bundle | `index-bymREW6j.js` |
 
 ### Verified
 
 - `GET /api/health` → 200
-- `POST /api/chat` mode `rag` → 200, summarizes the ingested Arabic training-period document
-- `POST /api/chat` mode `api` → 200
-- `POST /api/chat` mode `mcp` → 200
-- CORS preflight from the production origin returns `access-control-allow-origin`; preview origin does not
+- `POST /api/chat` `rag` + `Hello` → `"Hello, it's nice to meet you. How can I help you today?"` — no document content
+- `POST /api/chat` `rag` + `مرحبا` → `"مرحبا، كيف يمكنني مساعدتك اليوم؟"`
+- `POST /api/chat` `rag` + real document question → 200, answers from the corpus
+- `POST /api/chat` `api` → 200 · `mcp` → 200
+- CORS preflight: production origin allowed, preview origin allowed, `evil-personal-assistant-8ve.pages.dev` and `attacker.example.com` both rejected
+- `npm test` → 15 client tests, 15 worker tests, all passing
+- Production Pages serves the new bundle with the correct `VITE_API_URL`
 
-### Changed files
+### Commits
 
 ```
-client/src/errors.js      new
-client/src/api.js         ApiError, network-failure catch
-client/src/App.jsx        isError message flag, uploadStatus object
-client/src/App.css        error / warning styles appended
-worker/src/agent.js       trimToBudget + tightened constants
-worker/src/tools.js       RAG topK 10 -> 4
-worker/src/memory.js      MAX_TURNS 20 -> 8
+bbc5289 feat(assistant): allow Pages preview origins through CORS
+61027d3 fix(assistant): stop calling tools for greetings and small talk
+6bbc1a5 feat(assistant): show friendly errors instead of raw provider output
+4722694 feat(assistant): add Cloudflare Workers API and deploy setup
 ```
 
-Nothing has been committed. `worker/` and `client/src/api.js` are still untracked in git.
-
-### Configuration
-
-- `client/.env.production` → `VITE_API_URL=https://personal-assistant-api.alsheikharama.workers.dev` (verified correct in the built bundle)
-- `client/.env.development` → `VITE_API_URL=http://localhost:8787`
-- `worker/wrangler.toml` → `CLIENT_ORIGIN = "https://personal-assistant-8ve.pages.dev"`
-- Model: `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, 24000-token context window
-
----
+Everything under `02-personal-assistant/` is committed. Still untracked at the repo root: `01-mcp-search-server/worker/` (the deployed MCP server), `.playwright-mcp/`, `04-trip-planner-a2a/package-lock.json`, `app-dashboard.yml`.
 
 ## 4. Next Steps
 
-1. **Commit the work.** `worker/` and the new client files are untracked. Two logical commits: the client error handling, and the worker context fix.
-
-2. **Decide on preview-origin CORS.** `worker/src/index.js:20` uses exact matching (`allowed.includes(origin)`). Switching to a suffix match on `.personal-assistant-8ve.pages.dev` would make preview deployments usable for testing. Trade-off: any Pages project under that subdomain could then call the API.
-
-3. **Handle 8007 gracefully as defense in depth.** `trimToBudget` should prevent it, but a catch that retries once with a smaller budget would make the failure mode a slower answer rather than a 500.
-
-4. **Verify RAG answer quality at `topK=4`.** Retrieval was cut from 10 to 4 chunks. If answers become thin as the corpus grows, raise `topK` and lower `MAX_TOOL_RESULT_CHARS` to compensate, rather than reverting the cap.
-
-5. **Consider a larger-context model.** The 24000-token window is the binding constraint. A model with a larger window would relax every limit tightened here.
-
-6. **Add a client-side test for `toFriendlyMessage`.** The fallback chain is pure logic with no dependencies and is worth pinning down before it accumulates more cases.
-
-7. **Surface the raw error in the console.** `ApiError.detail` is preserved but never logged. A `console.error` in the catch would help diagnose issues from the browser without a `wrangler tail` session.
+1. **Commit `01-mcp-search-server/worker/`.** It is deployed and bound to the assistant Worker via a service binding, but its source is untracked.
+2. **Gitignore `.playwright-mcp/`.** Tool output, not source.
+3. **Verify RAG answer quality at `topK=4`.** Still open from session 1. If answers thin out as the corpus grows, raise `topK` and lower `MAX_TOOL_RESULT_CHARS` rather than removing the cap.
+4. **Consider a larger-context model.** The 24000-token window is still the binding constraint on every limit in `agent.js`.
+5. **Add an agent-level test.** `runAgent` is only covered indirectly; a fake `env.AI` would let the small-talk short-circuit and the retry path be asserted without a deploy.
