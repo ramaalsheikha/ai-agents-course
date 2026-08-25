@@ -1,0 +1,25 @@
+name = "personal-assistant-api"
+main = "src/index.js"
+compatibility_date = "2026-08-24"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "CHAT_HISTORY"
+id = "c7333267cf6c4dac967e4e96ebe5de77"
+
+
+[[services]]
+binding = "MCP"
+service = "mcp-search-server"
+
+[vars]
+AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+CLIENT_ORIGIN = "https://personal-assistant-8ve.pages.dev"
+PINECONE_NAMESPACE = ""
+MCP_SERVER_URL = "https://mcp-search-server.alsheikharama.workers.dev/mcp"

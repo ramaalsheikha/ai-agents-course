@@ -6,7 +6,10 @@
     "dev": "concurrently -n server,client -c red,cyan \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
-    "install:all": "npm install --legacy-peer-deps && npm --prefix server install --legacy-peer-deps && npm --prefix client install --legacy-peer-deps"
+    "install:all": "npm install --legacy-peer-deps && npm --prefix server install --legacy-peer-deps && npm --prefix worker install && npm --prefix client install --legacy-peer-deps",
+    "dev:worker": "npm --prefix worker run dev",
+    "dev:cf": "concurrently -n worker,client -c orange,cyan \"npm --prefix worker run dev\" \"npm --prefix client run dev\"",
+    "deploy:worker": "npm --prefix worker run deploy"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"

@@ -1,0 +1,21 @@
+{
+  "name": "personal-assistant-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "hono": "^4.9.10",
+    "unpdf": "^1.3.2"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7",
+    "wrangler": "^4.42.0"
+  }
+}
