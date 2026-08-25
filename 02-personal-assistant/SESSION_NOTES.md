@@ -1,5 +1,7 @@
 # Session Notes
 
+Single source of truth for `02-personal-assistant`. Newest session last; the live state of the system is **session 4 §7**, and the open work is **session 4 §8**. Earlier sections are kept as the record of how each decision was reached — where a later session overturned one, the earlier entry is struck through and points forward.
+
 Date: 2026-08-25
 Scope: `02-personal-assistant` (Cloudflare Workers API + Pages frontend)
 
@@ -211,7 +213,7 @@ If it has to go public later, the cheap version is a single Worker with the agen
 
 ## 5. Next Steps
 
-1. **Add an agent-level test.** `runAgent` is only covered indirectly. A fake `env.AI` would let the small-talk short-circuit and the 8007 retry path be asserted without a deploy. This is the highest-value item left.
+1. ~~**Add an agent-level test.**~~ Done in session 4 — `worker/src/agent.test.js`, 30 tests.
 2. **Verify RAG answer quality at `topK=4`.** Open since session 1. If answers thin out as the corpus grows, raise `topK` and lower `MAX_TOOL_RESULT_CHARS` to compensate rather than removing the cap.
 3. **Consider a larger-context model.** The 24000-token window of `llama-3.3-70b-instruct-fp8-fast` is still the binding constraint behind every limit in `agent.js`.
 4. **Widen small-talk coverage as real traffic arrives.** The pattern list is a fixed set; check logs for greetings that still reach the tool loop.
@@ -345,7 +347,7 @@ All 22 carry `contentHash`, `source`, `pageNumber`, `chunkIndex`, and `extractio
 
 ## 5. Two Defects Found While Writing These Notes
 
-Both are in `worker/src/ingest.js`, both verified by reading the committed code against the live index. Neither is fixed.
+Both are in `worker/src/ingest.js`, both verified by reading the committed code against the live index. **Both were fixed in session 4 — see session 4 §2.**
 
 **The Worker's name-based replace deletes nothing.** Vectors are written with `id: \`${contentPrefix(hash)}#${i}\`` → `sha_<hash32>#N`, but the replace call is `deleteByPrefix(env, \`${await documentPrefix(source)}#\`)` → `doc_<sha256(filename)16>#`. Nothing is ever written under a `doc_` prefix, so that prefix matches zero vectors on every upload. The claim in §2 that "name-based `deleteByPrefix` is retained so re-uploading a renamed edit of a document still replaces its old chunks" does not hold as implemented — an edited document re-uploaded under the same name is added alongside its old chunks, not in place of them. The content-hash skip still works, so identical bytes are still deduplicated; only the *edited* case leaks. Fix is to delete by the prefix that is actually written, or to store the source-name prefix as a second id namespace.
 
@@ -363,10 +365,10 @@ The server dedupes on `listPaginated({ prefix: \`${contentHash}#\` })` and the W
 1. **OCR is slow.** `gemma4:26b` runs half on CPU (9GB of 18GB in VRAM, 4096-token context) at roughly 4–5 minutes per page. A smaller vision model, or moving OCR to a background job with a progress endpoint, would make a 20-page upload tolerable.
 2. **The Worker has no OCR path.** It rejects PDFs without a usable text layer. Recovering them in production needs a vision model reachable from Workers AI.
 3. **`reindex.js` samples at `topK=1000`.** Fine at this corpus size; a real purge needs `listPaginated` over all IDs.
-4. **`arabic.js` is duplicated** between `server/lib/` and `worker/src/`. A shared package would prevent drift.
-5. **No agent-level test still.** The tool-call regression was found by hand, and would have been caught by a test asserting that a document question produces a `search_knowledge_base` call. This was already item 1 on the session-2 list.
-6. **Reconcile the two ingestion pipelines.** See §5 — the id-scheme split is the blocking one; the `doc_`/`sha_` prefix mismatch is a one-line fix.
-7. **The Worker changes are committed but not verified against production.** Session 3 landed in four commits and the tree is clean, but no deploy or post-deploy smoke test was run this session. The last recorded Worker version is still session 2's `bc507c24-3776-41c3-ac16-b26a27d37e13`.
+4. ~~**`arabic.js` is duplicated**~~ Fixed in session 4 — one copy at `shared/arabic.js`.
+5. ~~**No agent-level test still.**~~ Done in session 4.
+6. ~~**Reconcile the two ingestion pipelines.**~~ Done in session 4 — the Worker writes the server's id scheme.
+7. ~~**The Worker changes are committed but not verified against production.**~~ Deployed and smoke-tested in session 4.
 
 ## 7. Current State
 
@@ -406,13 +408,14 @@ client/src/App.jsx            mod    describeIngest — ingested vs skipped, OCR
 
 ---
 
+
 # Session 4 — 2026-08-25
 
-Scope: `02-personal-assistant` — commit session 3, close the agent-test gap, unify the two ingestion pipelines, deploy.
+Scope: `02-personal-assistant` — land session 3, close the agent-test gap, reconcile the two ingestion pipelines, fix answer language, deploy Worker and frontend.
 
 ## 1. Session 3 Landed
 
-Session 3's work was still uncommitted when this session started. It went in as four commits:
+Session 3's work was still uncommitted when this session started — it was item 6 on that session's list. It went in as four commits, split by concern rather than by file:
 
 ```
 4b4591a fix(assistant): extract Arabic PDFs correctly and deduplicate ingestion
@@ -423,54 +426,60 @@ Session 3's work was still uncommitted when this session started. It went in as 
 
 ## 2. What We Built
 
-### Agent-level tests (`worker/src/agent.test.js`, new)
+### Agent-level tests — `worker/src/agent.test.js` (new)
 
-Open since session 2, and the reason session 3's "the agent was not searching at all" regression had to be found by hand. 22 tests drive `runAgent` against a stubbed `env.AI` and a `Map`-backed `CHAT_HISTORY`, with `./tools.js` and `./mcp.js` mocked so no Pinecone or MCP call is made.
+Open since session 2, and the reason session 3's "the agent was not searching at all" regression had to be found by reading server logs. 30 tests now drive `runAgent` against a stubbed `env.AI` and a `Map`-backed `CHAT_HISTORY`, with `./tools.js` and `./mcp.js` mocked so no Pinecone query or MCP fetch is made.
 
-Covered: the small-talk short-circuit (no tool handler call, no `tools` in the request, `loadMcpTools` never reached), the RAG tool-call path, `MAX_CALLS_PER_ROUND`, `MAX_TOOL_ROUNDS` plus the synthesis fallback, `MAX_TOOL_RESULT_CHARS` truncation, a throwing tool handler surfacing as tool content rather than a 500, per-mode system prompts, history round-tripping, and the 8007 retry — including that the system prompt survives every trim.
+Covered: the small-talk short-circuit (no tool handler call, no `tools` in the request, `loadMcpTools` never reached), the RAG tool-call path, `MAX_CALLS_PER_ROUND`, `MAX_TOOL_ROUNDS` plus the synthesis fallback, `MAX_TOOL_RESULT_CHARS` truncation, a throwing tool handler surfacing as tool content rather than a 500, per-mode system prompts, history round-tripping, the 8007 retry including that the system prompt survives every trim, and the answer-language directive described in §4.
 
-### `shared/arabic.js` (moved)
+### `shared/arabic.js` — one copy instead of two
 
-`server/lib/arabic.js` and `worker/src/arabic.js` were byte-identical copies, so a fix to the query side could silently diverge from the ingest side. Both now import `02-personal-assistant/shared/arabic.js`. `shared/package.json` carries `"type": "module"` so Node does not reparse it for the server. Verified the Worker still bundles it with `wrangler deploy --dry-run`.
+`server/lib/arabic.js` and `worker/src/arabic.js` were byte-identical, so a fix to the query side could silently diverge from the ingest side. Both now import `02-personal-assistant/shared/arabic.js`. `shared/package.json` carries `"type": "module"` so Node does not reparse it for the server. Verified the Worker still bundles it through `wrangler deploy --dry-run`.
 
-### One id scheme across both pipelines
+### One vector-id scheme across both pipelines
 
 Both defects recorded in session 3 §5 were confirmed against the code and fixed.
 
-`worker/src/ingest.js` wrote `sha_<hash32>#<n>` but deleted `doc_<sha256(name)16>#` — a prefix nothing is ever written under, so the replace-on-reupload path matched zero vectors on every ingest. Separately, the server writes `<contentHash>#<page>#<chunk>` and dedupes on `<contentHash>#`, so neither pipeline could see the other's documents: the first UI upload would have re-indexed everything `reindex.js` had already ingested.
+`worker/src/ingest.js` wrote ids `sha_<hash32>#<n>` but deleted the prefix `doc_<sha256(name)16>#` — a prefix nothing is ever written under, so the replace-on-reupload path matched zero vectors on every ingest. Separately, `server/ingest.js` writes `<contentHash>#<page>#<chunk>` and dedupes on `<contentHash>#`, so neither pipeline could see the other's documents: the first UI upload would have re-indexed everything `reindex.js` had already ingested.
 
-The Worker now chunks per page and writes the server's id scheme. `extractPdfText` became `extractPdfPages`, returning `[{pageNumber, text}]`; `buildChunks` numbers chunks per page and adds `pageNumber` and `extraction` to metadata, which the `[source, p.N]` citation prefix in `tools.js` already reads. `documentPrefix`, `contentPrefix`, and the dead `deleteByPrefix` call are gone.
+The Worker now chunks per page and writes the server's id scheme. `extractPdfText` became `extractPdfPages`, returning `[{pageNumber, text}]`. A new `buildChunks` numbers chunks per page and adds `pageNumber` and `extraction` to metadata, which the `[source, p.N]` citation prefix in `tools.js` already reads but the Worker had never supplied. `documentPrefix`, `contentPrefix`, and the dead `deleteByPrefix` call are gone.
+
+### Answer language
+
+See §4 — the fix, and the regression it caused on the way.
+
+### Browser tab title
+
+`client/index.html` still carried Vite's scaffold title, `client`. Now `Agentic Personal Assistant`.
 
 ## 3. Key Decisions
 
-**Content hash, not source+content hash.** IDs stay keyed on `sha256(bytes)` alone, so identical bytes are skipped under any filename and the 22 live vectors need no migration. The cost is that an *edited* document re-uploaded under the same name is added alongside its old chunks rather than replacing them; `scripts/reindex.js purge-source` is the cleanup path. Keying on the source name as well would have made replace-on-edit work, at the price of re-ingesting the whole index and double-indexing the same bytes under two names.
+**Vector ids key on content hash alone.** Ids stay `sha256(bytes)#page#chunk`, so identical bytes are skipped under any filename and the 22 live vectors need no migration. The cost is that an *edited* document re-uploaded under the same name is added alongside its old chunks rather than replacing them; `scripts/reindex.js purge-source` is the cleanup path. Keying on the source name as well would have made replace-on-edit work, at the price of re-ingesting the whole index and double-indexing the same bytes under two names.
 
-**The agent tests mock `./tools.js`, not `fetch`.** Asserting on a tool *handler* spy is what makes "did the agent actually search?" a direct assertion. Stubbing at the network layer would have tested Pinecone's client as much as the agent loop.
+**The agent tests mock `./tools.js`, not `fetch`.** Asserting on a tool *handler* spy is what makes "did the agent actually search?" a direct assertion. Stubbing at the network layer would have tested the Pinecone client as much as the agent loop.
 
 **`shared/` is a plain directory, not a workspace package.** Both consumers reach it by relative path — esbuild bundles it for the Worker, Node resolves it for the server. A published package would add a build step to a teaching repo for one 47-line module.
 
-## 4. Verification
+**The language directive is added at call time, not pushed onto `messages`.** It has to sit last, after the tool results, on every call — but it is scaffolding, not conversation. Building it into the array passed to `runModel` keeps it out of `messages` and out of saved history.
 
-`npm test` in `worker/`: **62 passing** across 5 files (`agent` 22, `ingest` 17, `arabic` 10, `intent` 7, `cors` 8). Client: 15 passing.
+**Language is detected in code, not inferred by the model.** `hasArabic(message)` decides which directive text is sent, so the Arabic branch names the target language outright instead of leaving the model to work it out from context that is itself half Arabic.
 
-Deployed `personal-assistant-api` version `82846a5d-1d31-402d-8978-d497ef8885cb`.
+## 4. Answer Language — Fixed, After a Regression
 
-Against production, RAG mode:
+`ما هي مدة فترة التدريب؟` retrieved the right Arabic passage and answered correctly, in English. The rule "Answer in the language the user wrote in" sat mid-prompt, ahead of the tool results, and `llama-3.3-70b-instruct-fp8-fast` dropped it once a long passage block followed. The small-talk path was unaffected because its prompt is short and carries no tool output.
 
-| Query | Result |
-|---|---|
-| `tell me about folowise training` | grounded in `تقرير_التدريب_العملي_راما_الشيخة.pdf`, cites p.1/p.2/p.4 |
-| `tell me about business overview for Atlas` | grounded in `Atlas_Business_Overview_NoInvestor.pdf`, cites p.1/p.4/p.9/p.10 |
-| `what is the ESG scoring process?` | grounded in `Atlas_Business_Overview_NoInvestor.pdf`, cites p.6 |
-| `ما هي مدة فترة التدريب؟` | correct answer, **replied in English** — see §6 |
-| `Hello` | answered directly, no retrieval |
-| `GET /api/health` | 200 |
+Two changes in `worker/src/agent.js`, with the system-prompt half mirrored in `server/agent.js`:
 
-Every substantive answer carried a real `[filename, p.N]` citation, which is only possible because the page-level metadata now exists on the vectors.
+- `LANGUAGE_RULE` now closes the system prompt, after the mode rules and the shared rules.
+- `languageDirective(message)` is appended as a final user message on every model call that follows a tool round, and to the synthesis fallback, via `withLanguageDirective`.
+
+**The first attempt regressed English.** The directive read "write your entire answer in the same language as the question above". With Arabic passages sitting between the question and the directive, the model read the nearest Arabic text as "the question above" and answered *English* prompts in Arabic — reproduced on fresh session ids, so not history contamination. The directive now quotes the question verbatim (`The user asked: "…"`) and tells the model not to switch to the tool results' language.
+
+Worth keeping in mind for any future prompt work here: **a positional reference like "above" is not safe in a multilingual tool loop.** Name the thing.
 
 ## 5. Index State — No Purge Was Needed
 
-The request to purge 45 corrupted vectors was checked before anything was deleted. That state no longer exists; session 3's index surgery had already cleared it. `node scripts/reindex.js stats` reports:
+A request to purge 45 corrupted vectors and re-ingest was checked before anything was deleted. That state no longer exists; session 3's index surgery had already cleared it. `node scripts/reindex.js stats`:
 
 ```
 total vectors: 22
@@ -479,55 +488,91 @@ total vectors: 22
      3  hashed=3   extraction=text  تقييم التدريب للشركة مسكر ومغلف ومختوم (2).pdf
 ```
 
-All 22 carry `contentHash`, the broken-font document is present as OCR output, and no vector holds a temp-path source. Nothing was purged and nothing was re-ingested — the three documents already in the index are the output of the new pipeline, and the live RAG answers above are drawn from them. Deleting and re-ingesting would have destroyed good data, including 7 OCR'd pages the Worker cannot regenerate.
+All 22 carry `contentHash`, the broken-font document is present as OCR output, and no vector holds a temp-path source. Nothing was purged and nothing was re-ingested — the three documents already in the index are the output of the new pipeline, and every live answer below is drawn from them. Deleting and re-ingesting would have destroyed good data, including 7 OCR'd pages the Worker cannot regenerate: it has no OCR path and rejects that PDF outright.
 
-## 6. Open Items
+## 6. Verification
 
-1. ~~**Arabic questions get English answers.**~~ Fixed — see §8.
-2. **The duplicate-skip path is unverified end to end.** The id unification means a UI upload of an already-ingested document should now return `status: "skipped"`. No copy of the three PDFs is on disk in this repo, so this was not exercised against production. Re-upload any of the three through the UI and confirm the status line reads "already in the knowledge base".
-3. **The Worker still has no OCR path.** It rejects a PDF with no usable text layer. `تقرير_التدريب_العملي_راما_الشيخة.pdf` can only be re-ingested through `server/`, which needs local Ollama.
-4. **Server-side ingestion has no tests.** `server/lib/pdf-text.js` and `server/lib/ocr.js` are untested; the worker's equivalents are not. The server has no test runner configured at all.
+`npm test` — worker **70 passing** (`agent` 30, `ingest` 15, `arabic` 10, `intent` 7, `cors` 8), client **15 passing**.
+
+RAG answers against production, each on a fresh session id, two passes:
+
+| Question | Language | Grounding |
+|---|---|---|
+| `tell me about business overview for Atlas` | EN, EN | `Atlas_Business_Overview_NoInvestor.pdf` p.1/p.4/p.9/p.10 |
+| `tell me about folowise training` | EN, EN | `تقرير_التدريب_العملي_راما_الشيخة.pdf` p.1/p.2/p.4 |
+| `what is the ESG scoring process?` | EN, EN | `Atlas_Business_Overview_NoInvestor.pdf` p.6 |
+| `ما هي مدة فترة التدريب؟` | AR, AR | same, p.1 |
+| `ما هي عملية تقييم ESG؟` / `أخبرني عن تدريب فولوايز` | AR, AR | grounded |
+| `ما هو أطلس ولمن هو موجه؟` | AR, AR | grounded |
+
+12/12 on language. Every substantive answer carried a real `[filename, p.N]` citation, which is only possible because page-level metadata now exists on the vectors.
+
+Also verified: `مرحبا` answers in Arabic and `Hello` in English through the small-talk path with no retrieval; `api` and `mcp` modes return 200; `GET /api/health` 200; production Pages serves `<title>Agentic Personal Assistant</title>`.
+
+## 7. Current State
+
+### Deployed
+
+| Component | Value |
+|---|---|
+| Worker API | https://personal-assistant-api.alsheikharama.workers.dev |
+| Worker version | `e85c87c4-8a0f-4153-a05b-240d0a368ef5` |
+| Frontend (production) | https://personal-assistant-8ve.pages.dev |
+| Frontend (preview, this session) | https://aec76486.personal-assistant-8ve.pages.dev |
+| Client bundle | `index-Cjuhvmmp.js` |
+| MCP server | https://mcp-search-server.alsheikharama.workers.dev/mcp |
+| Pinecone | 22 vectors, default namespace, 3 sources |
+
+Worker deploys this session, in order: `82846a5d` (id unification) → `75a84b1b` (first language attempt, regressed English) → `e85c87c4` (current).
+
+The frontend had not been rebuilt since session 2. This session's Pages deploy therefore also shipped session 3's `describeIngest` upload messaging, which distinguishes an ingest from a skipped duplicate and reports OCR page counts — it had been written and committed but never served.
+
+### File states
+
+```
+worker/src/agent.test.js      new    30 tests, fake env.AI + KV
+worker/src/agent.js           mod    LANGUAGE_RULE last, languageDirective after tool results
+worker/src/ingest.js          mod    extractPdfPages, buildChunks, server id scheme
+worker/src/ingest.test.js     mod    chunk id + buildChunks tests replace prefix tests
+worker/src/tools.js           mod    imports shared/arabic.js
+worker/src/arabic.js          del    moved to shared/
+shared/arabic.js              new    moved from server/lib/, single copy
+shared/package.json           new    "type": "module"
+server/agent.js               mod    LANGUAGE_RULE last (prompt parity)
+server/tools.js               mod    imports shared/arabic.js
+server/lib/pdf-text.js        mod    imports shared/arabic.js
+server/lib/ocr.js             mod    imports shared/arabic.js
+server/scripts/query.js       mod    imports shared/arabic.js
+client/index.html             mod    <title>Agentic Personal Assistant</title>
+SESSION_NOTES.md              mod    this section
+```
+
+Working tree clean.
+
+### Commits
+
+```
+be3ef4d fix(assistant): set the browser tab title to the app name
+d56e0ae docs(assistant): record the answer-language fix and its English regression
+60b260f fix(assistant): answer in the language the question was asked in
+2ae3344 docs(assistant): record session 4 tests, id unification, and deploy
+39503b1 fix(assistant): give the Worker the same vector ids as the server
+9b3e223 refactor(assistant): share the Arabic normalizer between server and worker
+9d9f54b test(assistant): cover runAgent against a fake Workers AI binding
+4b81916 docs(assistant): record session 3 ingestion and retrieval fixes
+47a8255 fix(assistant): make knowledge base search unconditional in RAG mode
+3fa36fc feat(assistant): normalize search queries and cite passage sources
+4b4591a fix(assistant): extract Arabic PDFs correctly and deduplicate ingestion
+```
+
+An external edit to `SESSION_NOTES.md` — session 3's Failure C, its §4 reconciliation, and its §5 defect report — arrived mid-session and was swept into `9b3e223` rather than committed on its own. The content is intact.
+
+## 8. Next Steps
+
+1. **The model transcribes instead of summarising.** `أخبرني عن تدريب فولوايز` answers in Arabic but reproduces the retrieved passages close to verbatim — headings, bullet marks, and page furniture included. The RAG prompt says to ground and cite, but never to write in its own words. A "summarise in your own words, do not transcribe" clause next to the citation rule is the fix. Highest-value item left, and the only one visible to a user.
+2. **The duplicate-skip path is unverified end to end.** The id unification means a UI upload of an already-ingested document should now return `status: "skipped"` and render as "already in the knowledge base". No copy of the three PDFs is in this repo, so it was never exercised against production. Re-upload any of the three through the UI to confirm.
+3. **The Worker has no OCR path.** It rejects a PDF with no usable text layer. `تقرير_التدريب_العملي_راما_الشيخة.pdf` can only be ingested through `server/`, which needs local Ollama — so production cannot recover a scanned document on its own.
+4. **Server-side ingestion has no tests.** `server/lib/pdf-text.js` and `server/lib/ocr.js` are untested and the server has no test runner configured. The Worker's equivalents are covered; the server's are not, and the server is what produced every OCR'd vector in the index.
 5. **`reindex.js` samples at `topK=1000`.** Fine at 22 vectors; a real audit needs `listPaginated` over all ids.
 6. **Make MCP auth non-optional.** Unchanged since session 2. `01-mcp-search-server/worker/src/index.js:122` returns `true` when `MCP_AUTH_TOKEN` is unset, so a lost secret silently opens the endpoint.
-
-## 7. Commits
-
-```
-9d9f54b test(assistant): cover runAgent against a fake Workers AI binding
-9b3e223 refactor(assistant): share the Arabic normalizer between server and worker
-39503b1 fix(assistant): give the Worker the same vector ids as the server
-```
-
-Note: an external edit to `SESSION_NOTES.md` (Failure C, the §4 reconciliation, and the §5 defect report) arrived mid-session and was swept into `9b3e223` rather than committed on its own. The content is intact.
-
-## 8. Answer Language — Fixed
-
-`ما هي مدة فترة التدريب؟` retrieved the right Arabic passage and answered correctly, in English. The rule "Answer in the language the user wrote in" sat mid-prompt, ahead of the tool results, and `llama-3.3-70b-instruct-fp8-fast` dropped it once a long passage block followed. The small-talk path was unaffected because its prompt is short and carries no tool output.
-
-Two changes in `worker/src/agent.js`, mirrored in `server/agent.js` for the system-prompt half:
-
-- `LANGUAGE_RULE` now closes the system prompt, after the mode rules and the shared rules.
-- `languageDirective(message)` is appended as a final user message on every model call that follows a tool round, and to the synthesis fallback. It is added at call time via `withLanguageDirective`, so it never enters `messages` and never reaches saved history.
-
-**The first attempt regressed English.** The directive read "write your entire answer in the same language as the question above". With Arabic passages sitting between the question and the directive, the model read the nearest Arabic text as "the question above" and answered *English* prompts in Arabic — on fresh sessions, so not history contamination. The directive now quotes the question verbatim (`The user asked: "…"`) and tells the model not to switch to the tool results' language. Detection is `hasArabic(message)` from `shared/arabic.js`, which makes the Arabic branch state the target language by name rather than leaving it to inference.
-
-Verified on `e85c87c4-8a0f-4153-a05b-240d0a368ef5`, two passes over six questions, each on a fresh session:
-
-| Question | Pass 1 | Pass 2 |
-|---|---|---|
-| `tell me about business overview for Atlas` | EN | EN |
-| `tell me about folowise training` | EN | EN |
-| `what is the ESG scoring process?` | EN | EN |
-| `ما هي مدة فترة التدريب؟` | AR | AR |
-| `ما هي عملية تقييم ESG؟` / `أخبرني عن تدريب فولوايز` | AR | AR |
-| `ما هو أطلس ولمن هو موجه؟` | AR | AR |
-
-`مرحبا` still answers in Arabic and `Hello` in English through the small-talk path; `api` and `mcp` modes return 200.
-
-`npm test` in `worker/`: **70 passing**, 30 of them in `agent.test.js`. The seven new ones assert the rule closes the system prompt, that the directive lands *after* the tool message, that it quotes the question, that it is absent before any tool runs, that it stays out of saved history, and that the synthesis fallback repeats it.
-
-Deploys this session: `82846a5d` (id unification) → `75a84b1b` (first language attempt, regressed English) → `e85c87c4` (current).
-
-### Still open
-
-`أخبرني عن تدريب فولوايز` answers in Arabic but reproduces the retrieved passages close to verbatim — headings, bullet marks, and page furniture included — instead of summarising them. The RAG prompt tells the model to ground and cite, but never to write in its own words. Worth a "summarise, do not transcribe" clause next to the citation rule.
+7. **Consider a larger-context model.** The 24000-token window of `llama-3.3-70b-instruct-fp8-fast` is still the constraint behind every limit in `agent.js`, and now behind the trimming that the language directive has to survive.
