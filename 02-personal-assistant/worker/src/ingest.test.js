@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentHash, contentPrefix, documentPrefix, pageToText, splitText } from "./ingest.js";
+import { buildChunks, chunkId, contentHash, pageToText, splitText } from "./ingest.js";
 
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
@@ -57,28 +57,6 @@ describe("splitText", () => {
   });
 });
 
-describe("documentPrefix", () => {
-  it("is stable for the same source name", async () => {
-    const a = await documentPrefix("Atlas_Business_Overview_NoInvestor.pdf");
-    const b = await documentPrefix("Atlas_Business_Overview_NoInvestor.pdf");
-
-    expect(a).toBe(b);
-  });
-
-  it("differs across source names", async () => {
-    const a = await documentPrefix("Atlas_Business_Overview_NoInvestor.pdf");
-    const b = await documentPrefix("other.pdf");
-
-    expect(a).not.toBe(b);
-  });
-
-  it("produces an ASCII-safe id prefix for non-latin file names", async () => {
-    const prefix = await documentPrefix("تقرير_التدريب_العملي.pdf");
-
-    expect(prefix).toMatch(/^doc_[0-9a-f]{16}$/);
-  });
-});
-
 const item = (str, x, y, { dir = "ltr", width = str.length * 5 } = {}) => ({
   str,
   dir,
@@ -113,20 +91,61 @@ describe("pageToText", () => {
 
 });
 
-describe("contentPrefix", () => {
+describe("chunk ids", () => {
   it("is stable for identical bytes regardless of file name", async () => {
-    const bytes = new TextEncoder().encode("same content").buffer;
-    const a = contentPrefix(await contentHash(bytes));
-    const b = contentPrefix(await contentHash(new TextEncoder().encode("same content").buffer));
+    const a = await contentHash(new TextEncoder().encode("same content").buffer);
+    const b = await contentHash(new TextEncoder().encode("same content").buffer);
 
     expect(a).toBe(b);
-    expect(a).toMatch(/^sha_[0-9a-f]{32}$/);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("differs when the bytes differ", async () => {
-    const a = contentPrefix(await contentHash(new TextEncoder().encode("one").buffer));
-    const b = contentPrefix(await contentHash(new TextEncoder().encode("two").buffer));
+    const a = await contentHash(new TextEncoder().encode("one").buffer);
+    const b = await contentHash(new TextEncoder().encode("two").buffer);
 
     expect(a).not.toBe(b);
+  });
+
+  it("matches the id scheme the server writes", async () => {
+    const hash = await contentHash(new TextEncoder().encode("doc").buffer);
+
+    expect(chunkId(hash, 5, 0)).toBe(`${hash}#5#0`);
+    expect(chunkId(hash, 5, 0).startsWith(`${hash}#`)).toBe(true);
+  });
+});
+
+describe("buildChunks", () => {
+  const pages = [
+    { pageNumber: 1, text: "Atlas is a multi-platform application." },
+    { pageNumber: 2, text: "It ships an Android app and a website." },
+  ];
+
+  it("numbers chunks per page, not across the document", () => {
+    const chunks = buildChunks(pages, { source: "atlas.pdf", hash: "abc" });
+
+    expect(chunks.map((chunk) => chunk.id)).toEqual(["abc#1#0", "abc#2#0"]);
+    expect(chunks.map((chunk) => chunk.metadata.chunkIndex)).toEqual([0, 0]);
+  });
+
+  it("carries the source, page, and extraction method into metadata", () => {
+    const [chunk] = buildChunks(pages, { source: "atlas.pdf", hash: "abc" });
+
+    expect(chunk.metadata).toMatchObject({
+      source: "atlas.pdf",
+      contentHash: "abc",
+      pageNumber: 1,
+      extraction: "text",
+    });
+    expect(chunk.metadata.text).toBe(chunk.text);
+  });
+
+  it("drops pages with no text", () => {
+    const chunks = buildChunks([{ pageNumber: 1, text: "   " }], {
+      source: "blank.pdf",
+      hash: "abc",
+    });
+
+    expect(chunks).toEqual([]);
   });
 });

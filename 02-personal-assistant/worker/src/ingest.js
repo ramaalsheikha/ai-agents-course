@@ -1,5 +1,5 @@
 import { getDocumentProxy } from "unpdf";
-import { deleteByPrefix, embed, listByPrefix, upsert } from "./pinecone.js";
+import { embed, listByPrefix, upsert } from "./pinecone.js";
 import { normalizeText } from "../../shared/arabic.js";
 
 const CHUNK_SIZE = 1000;
@@ -124,73 +124,81 @@ const sha256Hex = async (bytes) => {
     .join("");
 };
 
-export const documentPrefix = async (source) =>
-  `doc_${(await sha256Hex(new TextEncoder().encode(source))).slice(0, 16)}`;
-
 export const contentHash = async (arrayBuffer) =>
   sha256Hex(new Uint8Array(arrayBuffer).slice());
 
-export const contentPrefix = (hash) => `sha_${hash.slice(0, 32)}`;
+export const chunkId = (hash, pageNumber, chunkIndex) =>
+  `${hash}#${pageNumber}#${chunkIndex}`;
 
-export const extractPdfText = async (arrayBuffer) => {
+export const extractPdfPages = async (arrayBuffer) => {
   const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer).slice());
   const pages = [];
 
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
     const { items } = await page.getTextContent();
-    pages.push(pageToText(items));
+    pages.push({ pageNumber, text: pageToText(items) });
   }
 
-  const text = normalize(pages.join("\n\n"));
-  assertReadable(text);
+  assertReadable(normalize(pages.map((page) => page.text).join("\n\n")));
 
-  return text.replace(CONTROL_CHARS, "");
+  return pages.map((page) => ({
+    pageNumber: page.pageNumber,
+    text: normalize(page.text).replace(CONTROL_CHARS, ""),
+  }));
 };
+
+export const buildChunks = (pages, { source, hash, objectKey }) =>
+  pages.flatMap((page) =>
+    splitText(page.text).map((text, chunkIndex) => ({
+      id: chunkId(hash, page.pageNumber, chunkIndex),
+      text,
+      metadata: {
+        text,
+        source,
+        objectKey,
+        contentHash: hash,
+        pageNumber: page.pageNumber,
+        chunkIndex,
+        extraction: "text",
+      },
+    })),
+  );
 
 export const ingestPdf = async (env, { arrayBuffer, source, objectKey, force = false }) => {
   const hash = await contentHash(arrayBuffer);
-  const prefix = contentPrefix(hash);
 
   if (!force) {
-    const existing = await listByPrefix(env, `${prefix}#`, 1);
+    const existing = await listByPrefix(env, `${hash}#`, 1);
     if (existing.length > 0) {
       return { status: "skipped", reason: "duplicate", contentHash: hash, source, chunks: 0 };
     }
   }
 
-  const text = await extractPdfText(arrayBuffer);
-  const chunks = splitText(text);
+  const pages = await extractPdfPages(arrayBuffer);
+  const chunks = buildChunks(pages, { source, hash, objectKey });
 
   if (chunks.length === 0) {
     throw new Error("No extractable text found in PDF");
   }
 
-  const replaced = await deleteByPrefix(env, `${await documentPrefix(source)}#`);
-
   let upserted = 0;
 
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
-    const vectors = await embed(env, batch, "passage");
+    const vectors = await embed(env, batch.map((chunk) => chunk.text), "passage");
 
     await upsert(
       env,
       batch.map((chunk, index) => ({
-        id: `${prefix}#${i + index}`,
+        id: chunk.id,
         values: vectors[index],
-        metadata: {
-          text: chunk,
-          source,
-          objectKey,
-          contentHash: hash,
-          chunkIndex: i + index,
-        },
+        metadata: chunk.metadata,
       })),
     );
 
     upserted += batch.length;
   }
 
-  return { status: "ingested", contentHash: hash, source, chunks: upserted, replaced };
+  return { status: "ingested", contentHash: hash, source, chunks: upserted };
 };
