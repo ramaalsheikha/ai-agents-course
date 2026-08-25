@@ -1,5 +1,5 @@
 import { embed, query } from "./pinecone.js";
-import { normalizeText } from "./arabic.js";
+import { normalizeText } from "../../shared/arabic.js";
 
 const SERPAPI_ENDPOINT = "https://serpapi.com/search.json";
 

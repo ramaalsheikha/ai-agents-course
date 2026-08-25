@@ -1,6 +1,6 @@
 import { getDocumentProxy } from "unpdf";
 import { deleteByPrefix, embed, listByPrefix, upsert } from "./pinecone.js";
-import { normalizeText } from "./arabic.js";
+import { normalizeText } from "../../shared/arabic.js";
 
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { PineconeStore } from "@langchain/pinecone";
 import { PineconeEmbeddings } from "@langchain/pinecone";
 import { Pinecone as PineconeClient } from "@pinecone-database/pinecone";
-import { normalizeText } from "./lib/arabic.js";
+import { normalizeText } from "../shared/arabic.js";
 
 let vectorStore;
 

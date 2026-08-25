@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasArabic, hasPresentationForms, normalizeText } from "./arabic.js";
+import { hasArabic, hasPresentationForms, normalizeText } from "../../shared/arabic.js";
 
 describe("normalizeText", () => {
   it("folds Arabic presentation forms back to base letters", () => {

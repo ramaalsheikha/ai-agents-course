@@ -1,5 +1,5 @@
 import { renderPageAsImage } from "unpdf";
-import { normalizeText } from "./arabic.js";
+import { normalizeText } from "../../shared/arabic.js";
 
 const DEFAULT_BASE_URL = "http://localhost:11434";
 const DEFAULT_MODEL = "gemma4:26b";

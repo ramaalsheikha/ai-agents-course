@@ -241,6 +241,18 @@ Investigation found two unrelated failures, not one, and neither was the RTL/lig
 
 **Failure B — no `ToUnicode` CMap.** `تقرير_التدريب_العملي_راما_الشيخة.pdf` embeds subsetted Identity-H fonts (`LFURXI+NotoNaskh`, `KPLIFR+Amiri-Bold`, `TLMVBT+NotoNaskh-Bold`) with zero `/ToUnicode` entries. The subsets keep a `cmap` table covering only 41–133 Latin codepoints; the ~1,500 Arabic glyphs are unnamed (`glyph00002`…) and `GSUB` is stripped, so there is no path from glyph ID back to a character. pdf.js, pypdf, and PyMuPDF all fail on it — the text simply is not in the file. Only rendering and OCR recovers it.
 
+**Failure C — the chunker never advanced at the tail.** Independent of Arabic, and the failure behind the original Atlas complaint. `splitText` in `worker/src/ingest.js` advanced by `Math.max(slice.length - CHUNK_OVERLAP, 1)`. Once the remaining text fell below `CHUNK_OVERLAP` (200), that expression went negative and clamped to `1`, so `start` crept one character at a time to EOF, emitting a one-character-shorter suffix on every iteration.
+
+`Atlas_Business_Overview_NoInvestor.pdf` was stored as 209 vectors of which **8** held real content. The other 201 were the same closing sentence, shifted by one character each:
+
+```
+"reating a smarter connection between\ncompanies and financing opportunities."
+"d creating a smarter connection between\ncompanies and financing opportunities."
+"and creating a smarter connection between\ncompanies and financing opportunities."
+```
+
+Extraction was never at fault here — pdf-parse and pdfjs-dist both returned byte-identical, clean text for this document (6607 chars, zero control characters). Retrieval was drowning in near-duplicates at `topK`. Fixed by breaking out of the loop once the slice reaches EOF (`if (atEnd) break;`).
+
 Two further defects compounded the damage:
 
 - `source` metadata held the multer temp path (`/var/folders/…/1787577518924-29baee639c3558.pdf`), making citations and dedup useless.
@@ -279,7 +291,7 @@ Pages failing the gate are rendered at 2× via `unpdf` + `@napi-rs/canvas` and t
 
 ### Worker parity
 
-`worker/src/ingest.js` gained the same line-grouping and RTL ordering, uses `normalizeText`, and switched dedup from `sha256(filename)` to `sha256(file bytes)` (`sha_` id prefix). Name-based `deleteByPrefix` is retained so re-uploading a renamed edit of a document still replaces its old chunks. `listByPrefix` was factored out of `deleteByPrefix` in `worker/src/pinecone.js`.
+`worker/src/ingest.js` gained the same line-grouping and RTL ordering, uses `normalizeText`, and switched dedup from `sha256(filename)` to `sha256(file bytes)` (`sha_` id prefix). Name-based `deleteByPrefix` is retained, intended to let a renamed edit of a document replace its old chunks — **this does not actually work, see §5.** `listByPrefix` was factored out of `deleteByPrefix` in `worker/src/pinecone.js`.
 
 ### Client
 
@@ -307,7 +319,7 @@ Extraction, measured:
 |---|---|---|
 | `تقييم التدريب…pdf` | scrambled | 0% unmapped glyphs, correct Arabic, 3 chunks |
 | `تقرير_التدريب_العملي…pdf` | 14.9% unmapped glyphs | flagged unusable → 5/5 pages OCR'd → 7 chunks |
-| `Atlas_Business_Overview…pdf` | fine | fine, 12 chunks |
+| `Atlas_Business_Overview…pdf` | text clean, but 209 chunks — 201 of them one-character-shifted duplicates of the closing sentence | 12 chunks, all distinct |
 
 Direct Pinecone query for `ما هي الجامعة ومتى مدة التدريب؟` now returns the correct Arabic passages at 0.41 similarity, against 0.18 for the garbage chunks. `scripts/query.js` runs this without the agent in the loop.
 
@@ -317,13 +329,77 @@ End to end through `/api/chat` in RAG mode, after the prompt fix: both substanti
 
 All 68 vectors in the default namespace lacked a `contentHash` and were deleted, then the three documents were re-ingested through the new pipeline.
 
-**Unexplained:** the index held 268 vectors at the start of the session and 68 by the time the purge ran, with no delete issued against that namespace from this session. The 200 missing vectors were `Atlas_Business_Overview_NoInvestor.pdf` chunks with UUID ids. Worth confirming nothing else writes to this index.
+**Resolved — the 268 → 68 drop was this session.** Earlier in the same session, before the `server/` rewrite landed, the Atlas document was repaired against the Worker pipeline directly: its 209 UUID-id vectors were deleted and 9 replacement chunks upserted under `doc_`-prefixed ids. 268 − 209 + 9 = 68, which accounts for the count exactly. Nothing else writes to this index; no further audit is needed.
 
-## 5. Next Steps
+Those 9 `doc_` vectors were themselves superseded by the final purge and re-ingest, which is why the index now holds only `<contentHash>#<page>#<chunk>` ids.
+
+**Current index contents** (22 vectors, default namespace, verified by direct fetch):
+
+| Source | Chunks | Extraction |
+|---|---|---|
+| `Atlas_Business_Overview_NoInvestor.pdf` | 12 | text |
+| `تقرير_التدريب_العملي_راما_الشيخة.pdf` | 7 | ocr |
+| `تقييم التدريب للشركة مسكر ومغلف ومختوم (2).pdf` | 3 | text |
+
+All 22 carry `contentHash`, `source`, `pageNumber`, `chunkIndex`, and `extraction`.
+
+## 5. Two Defects Found While Writing These Notes
+
+Both are in `worker/src/ingest.js`, both verified by reading the committed code against the live index. Neither is fixed.
+
+**The Worker's name-based replace deletes nothing.** Vectors are written with `id: \`${contentPrefix(hash)}#${i}\`` → `sha_<hash32>#N`, but the replace call is `deleteByPrefix(env, \`${await documentPrefix(source)}#\`)` → `doc_<sha256(filename)16>#`. Nothing is ever written under a `doc_` prefix, so that prefix matches zero vectors on every upload. The claim in §2 that "name-based `deleteByPrefix` is retained so re-uploading a renamed edit of a document still replaces its old chunks" does not hold as implemented — an edited document re-uploaded under the same name is added alongside its old chunks, not in place of them. The content-hash skip still works, so identical bytes are still deduplicated; only the *edited* case leaks. Fix is to delete by the prefix that is actually written, or to store the source-name prefix as a second id namespace.
+
+**The Worker and the server use incompatible id schemes, so neither sees the other's documents.**
+
+```
+server/ingest.js   id = `${contentHash}#${pageNumber}#${chunkIndex}`   e.g. 3c407fc0…52b#5#0
+worker/src/ingest.js   id = `sha_${hash.slice(0,32)}#${i}`             e.g. sha_3c407fc0…#5
+```
+
+The server dedupes on `listPaginated({ prefix: \`${contentHash}#\` })` and the Worker on `listByPrefix(env, \`sha_${hash32}#\`)`. Neither prefix can match the other's ids. The client uploads through the Worker, so a document already ingested by `server/scripts/reindex.js` — which is how all 22 current vectors got there — will be ingested a second time by the first upload through the UI, with no skip and no replace. Worth settling on one scheme before the next upload.
+
+## 6. Next Steps
 
 1. **OCR is slow.** `gemma4:26b` runs half on CPU (9GB of 18GB in VRAM, 4096-token context) at roughly 4–5 minutes per page. A smaller vision model, or moving OCR to a background job with a progress endpoint, would make a 20-page upload tolerable.
 2. **The Worker has no OCR path.** It rejects PDFs without a usable text layer. Recovering them in production needs a vision model reachable from Workers AI.
 3. **`reindex.js` samples at `topK=1000`.** Fine at this corpus size; a real purge needs `listPaginated` over all IDs.
 4. **`arabic.js` is duplicated** between `server/lib/` and `worker/src/`. A shared package would prevent drift.
 5. **No agent-level test still.** The tool-call regression was found by hand, and would have been caught by a test asserting that a document question produces a `search_knowledge_base` call. This was already item 1 on the session-2 list.
-6. **`worker/src/ingest.test.js` and the session-2 worker changes are uncommitted** and were untracked when this session started.
+6. **Reconcile the two ingestion pipelines.** See §5 — the id-scheme split is the blocking one; the `doc_`/`sha_` prefix mismatch is a one-line fix.
+7. **The Worker changes are committed but not verified against production.** Session 3 landed in four commits and the tree is clean, but no deploy or post-deploy smoke test was run this session. The last recorded Worker version is still session 2's `bc507c24-3776-41c3-ac16-b26a27d37e13`.
+
+## 7. Current State
+
+Working tree clean. Session 3 landed as:
+
+```
+4b81916 docs(assistant): record session 3 ingestion and retrieval fixes
+47a8255 fix(assistant): make knowledge base search unconditional in RAG mode
+3fa36fc feat(assistant): normalize search queries and cite passage sources
+4b4591a fix(assistant): extract Arabic PDFs correctly and deduplicate ingestion
+```
+
+### File states
+
+```
+server/lib/arabic.js          new    normalizeText — NFKC fold, strip tatweel/harakat/bidi
+server/lib/pdf-text.js        new    line grouping, RTL ordering, assessText/assessDocument
+server/lib/ocr.js             new    unpdf render + Ollama vision transcription
+server/ingest.js              rw     content-hash ids, per-page extraction, direct upsert
+server/scripts/reindex.js     new    health report, purge-*, ingest
+server/scripts/query.js       new    agentless Pinecone query
+server/tools.js               mod    query normalization, [source, p.N] citation prefix
+server/agent.js               mod    per-mode system prompt, unconditional RAG search
+server/index.js               mod    latin1 filename re-decode, ingest result passthrough
+server/package.json           mod    -@langchain/community -pdf-parse +unpdf +@napi-rs/canvas
+worker/src/arabic.js          new    verbatim copy of server/lib/arabic.js
+worker/src/arabic.test.js     new    10 tests
+worker/src/ingest.js          mod    splitText EOF break, line grouping, RTL, content-hash
+worker/src/ingest.test.js     new    14 tests
+worker/src/pinecone.js        mod    listByPrefix factored out of deleteByPrefix
+worker/src/tools.js           mod    query normalization, citation prefix
+worker/src/agent.js           mod    per-mode system prompt
+client/src/App.jsx            mod    describeIngest — ingested vs skipped, OCR page count
+```
+
+`npm test` in `worker/`: **39 passing** across 4 files (`arabic` 10, `ingest` 14, `intent` 7, `cors` 8).

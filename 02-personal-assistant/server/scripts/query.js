@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { Pinecone } from "@pinecone-database/pinecone";
-import { normalizeText } from "../lib/arabic.js";
+import { normalizeText } from "../../shared/arabic.js";
 
 const EMBEDDING_MODEL = "llama-text-embed-v2";
 const TOP_K = Number(process.env.TOP_K || 4);

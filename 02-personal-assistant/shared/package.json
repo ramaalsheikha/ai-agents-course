@@ -1,0 +1,7 @@
+{
+  "name": "personal-assistant-shared",
+  "version": "1.0.0",
+  "description": "Modules shared by the Express server and the Cloudflare Worker",
+  "type": "module",
+  "private": true
+}

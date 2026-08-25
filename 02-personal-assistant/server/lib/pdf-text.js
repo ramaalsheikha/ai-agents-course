@@ -1,5 +1,5 @@
 import { getDocumentProxy } from "unpdf";
-import { normalizeText } from "./arabic.js";
+import { normalizeText } from "../../shared/arabic.js";
 
 const LINE_TOLERANCE = 2.5;
 const SPACE_GAP_RATIO = 0.2;
