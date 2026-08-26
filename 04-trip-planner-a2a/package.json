@@ -6,7 +6,10 @@
     "dev": "concurrently -n mcp,server,client -c magenta,cyan,yellow \"npm --prefix ../01-mcp-search-server run dev\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
-    "install:all": "npm --prefix server install --legacy-peer-deps && npm --prefix client install --legacy-peer-deps"
+    "install:all": "npm --prefix server install --legacy-peer-deps && npm --prefix client install --legacy-peer-deps",
+    "dev:workers": "npm --prefix workers run dev:orchestrator",
+    "test:workers": "npm --prefix workers test",
+    "deploy:workers": "npm --prefix workers run deploy:all"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"

@@ -1,0 +1,23 @@
+{
+  "name": "trip-planner-a2a-workers",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy:search": "wrangler deploy --config search-agent/wrangler.toml",
+    "deploy:budget": "wrangler deploy --config budget-agent/wrangler.toml",
+    "deploy:itinerary": "wrangler deploy --config itinerary-agent/wrangler.toml",
+    "deploy:orchestrator": "wrangler deploy --config orchestrator/wrangler.toml",
+    "deploy:all": "npm run deploy:search && npm run deploy:budget && npm run deploy:itinerary && npm run deploy:orchestrator",
+    "dev:orchestrator": "wrangler dev --config orchestrator/wrangler.toml",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "hono": "^4.9.10"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7",
+    "wrangler": "^4.126.0"
+  }
+}

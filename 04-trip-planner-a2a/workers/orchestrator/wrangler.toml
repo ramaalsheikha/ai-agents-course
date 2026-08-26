@@ -1,0 +1,22 @@
+name = "a2a-orchestrator"
+main = "src/index.js"
+compatibility_date = "2026-08-24"
+
+[observability]
+enabled = true
+
+[[services]]
+binding = "SEARCH"
+service = "a2a-search-agent"
+
+[[services]]
+binding = "BUDGET"
+service = "a2a-budget-agent"
+
+[[services]]
+binding = "ITINERARY"
+service = "a2a-itinerary-agent"
+
+[vars]
+CLIENT_ORIGIN = "http://localhost:5175,https://trip-planner-a2a.pages.dev"
+CLIENT_ORIGIN_SUFFIXES = ".trip-planner-a2a.pages.dev"

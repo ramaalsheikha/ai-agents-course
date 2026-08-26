@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
+
 const AGENT_ICONS = { search: "🔍", budget: "💰", itinerary: "🗺️" };
 
 function AgentCard({ name, status, card }) {
@@ -305,7 +307,7 @@ function App() {
       people: String(people),
     });
 
-    const es = new EventSource(`http://localhost:3013/api/a2a/stream?${params}`);
+    const es = new EventSource(`${API_URL}/api/a2a/stream?${params}`);
     esRef.current = es;
 
     es.onmessage = (event) => {
