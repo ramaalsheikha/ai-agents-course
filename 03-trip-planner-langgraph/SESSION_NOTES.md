@@ -264,3 +264,19 @@ A full run of `Lisbon / 3 days / $2000 / 2 people` against the deployed worker:
 `minItems`/`maxItems` are honoured by Workers AI, which answers §4 item 3 and clears the schema for reuse in `04`. Real place names in the itinerary also confirm the search agent's MCP results actually reached the synthesis prompt, rather than the model filling gaps from memory.
 
 **§4 items 1, 2, and 3 are closed. This project is verified end to end in production.** Item 4 — observing the `gpt-oss` output shape live — is still open, since `toText` handles both shapes silently and nothing in the run distinguishes them.
+
+---
+
+# Session 6 — 2026-08-26 (light theme)
+
+Scope: presentation only. No behavior, API, or worker change.
+
+`client/src/App.css` was dark-only — no `prefers-color-scheme` in it, just hardcoded `#0b0f14` surfaces and white text. Converting to light was a re-theme, not a switch-off. 64 declarations. The itinerary time slots keep their colored left borders; morning amber, afternoon sky, and evening violet all moved to saturated shades that read on a white card.
+
+The mapping was role-aware: in this file every `rgba(255, 255, 255, α)` above 0.35 was text and every one at 0.25 or below was a surface or border, with no counter-examples, so text became ink on the same scale and surfaces became neutral `rgba(16, 16, 20, β)` tints. Low-alpha colored fills were left alone.
+
+`client/src/index.css` was leftover Vite boilerplate defaulting to `#242424` with a *light* media override. `.appShell` painted over it, so it only reached scrollbars and native form controls. It is light-only now.
+
+Deployed to `trip-planner-8xe.pages.dev` as `dce63775`; the served CSS was fetched back and contains `#f7f7f8` with zero `#0b0f14`. Committed in `98b42d0`.
+
+Only the empty state was seen rendered — the result views are unverified against the new palette. The repo-wide record is `00-landing/SESSION_NOTES.md` session 2.

@@ -161,3 +161,19 @@ Agent versions after the fix: search `810c4c81`, budget `265ad3f2`, itinerary `b
 | `26278ed` | the `AGENT_URL` card fix, its two tests, and the §8 verification record |
 
 Both are on `main` and unpushed. `03` and `05`'s changes from the same day are in `3d3ec83` and `a669ea1`.
+
+---
+
+# Session 11 — 2026-08-26 (light theme)
+
+Scope: presentation only. No behavior, API, or worker change.
+
+`client/src/App.css` was dark-only — no `prefers-color-scheme` in it, just hardcoded `#0b0f14` surfaces and white text. Converting to light was a re-theme, not a switch-off. 78 declarations, the largest of the four. The agent cards, their per-state tints, and the discovery badges all carry over; `.agentCard--working` keeps its blue wash.
+
+The mapping was role-aware: in this file every `rgba(255, 255, 255, α)` above 0.35 was text and every one at 0.25 or below was a surface or border, with no counter-examples, so text became ink on the same scale and surfaces became neutral `rgba(16, 16, 20, β)` tints. Low-alpha colored fills were left alone.
+
+`client/src/index.css` was leftover Vite boilerplate defaulting to `#242424` with a *light* media override. `.appShell` painted over it, so it only reached scrollbars and native form controls. It is light-only now.
+
+Deployed to `trip-planner-a2a.pages.dev` as `ae327a80`; the served CSS was fetched back and contains `#f7f7f8` with zero `#0b0f14`. Committed in `98b42d0`.
+
+Only the empty state was seen rendered — the result views are unverified against the new palette. The repo-wide record is `00-landing/SESSION_NOTES.md` session 2.

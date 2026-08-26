@@ -336,3 +336,19 @@ Committed as `a669ea1`, on `main` and unpushed.
 ## 6. Post-Session Re-Verification
 
 The MCP bearer token was rotated across all four MCP-speaking workers in the account later the same day. This project does not speak MCP — its only external call is SerpAPI — so nothing here depended on it, but the full run was repeated afterwards to be sure: all three payloads parsed, `readinessScore: 60` again, no errors. §5's two items are unaffected and still open.
+
+---
+
+# Session 7 — 2026-08-26 (light theme)
+
+Scope: presentation only. No behavior, API, or worker change.
+
+`client/src/App.css` was dark-only — no `prefers-color-scheme` in it, just hardcoded `#0b0f14` surfaces and white text. Converting to light was a re-theme, not a switch-off. 57 declarations. The brand mint `#07DCA6` moved to `#0d9488` and the yellow `#F9E663` to `#a16207`; both were unreadable on white at their original values. `#1E30BA` was already dark enough to keep.
+
+The mapping was role-aware: in this file every `rgba(255, 255, 255, α)` above 0.35 was text and every one at 0.25 or below was a surface or border, with no counter-examples, so text became ink on the same scale and surfaces became neutral `rgba(16, 16, 20, β)` tints. Low-alpha colored fills were left alone.
+
+`client/src/index.css` was leftover Vite boilerplate defaulting to `#242424` with a *light* media override. `.appShell` painted over it, so it only reached scrollbars and native form controls. It is light-only now.
+
+Deployed to `career-assistant-3by.pages.dev` as `dfd4ea75`; the served CSS was fetched back and contains `#f7f7f8` with zero `#0b0f14`. Committed in `98b42d0`.
+
+Only the empty state was seen rendered — the result views are unverified against the new palette. The repo-wide record is `00-landing/SESSION_NOTES.md` session 2.

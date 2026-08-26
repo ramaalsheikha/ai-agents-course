@@ -603,3 +603,19 @@ Because this worker holds a copy, a rotation that missed it would have taken MCP
 | `mode: "rag"` | Pinecone hit; correctly reported the knowledge base has no weather data |
 
 All three modes work on the rotated token. §8's items are all unchanged — in particular item 6, **make MCP auth non-optional**, is now more pointed than it was: four workers depend on that check, and `01-mcp-search-server/worker/src/index.js:122` still returns `true` when the secret is unset. A rotation that cleared the value rather than replacing it would open the endpoint silently instead of failing loudly.
+
+---
+
+# Session 6 — 2026-08-26 (light theme)
+
+Scope: presentation only. No behavior, API, or worker change.
+
+`client/src/App.css` was dark-only — no `prefers-color-scheme` in it, just hardcoded `#0b0f14` surfaces and white text. Converting to light was a re-theme, not a switch-off. 47 declarations. The user bubble keeps its green fill (`#0a7f63`) with white text where it previously ran near-black green on `#10a37f`. The three mode badges — RAG violet, API amber, MCP green — keep their tinted fills and take darker text.
+
+The mapping was role-aware: in this file every `rgba(255, 255, 255, α)` above 0.35 was text and every one at 0.25 or below was a surface or border, with no counter-examples, so text became ink on the same scale and surfaces became neutral `rgba(16, 16, 20, β)` tints. Low-alpha colored fills were left alone.
+
+`client/src/index.css` was leftover Vite boilerplate defaulting to `#242424` with a *light* media override. `.appShell` painted over it, so it only reached scrollbars and native form controls. It is light-only now.
+
+Deployed to `personal-assistant-8ve.pages.dev` as `4c7aded8`; the served CSS was fetched back and contains `#f7f7f8` with zero `#0b0f14`. Committed in `98b42d0`.
+
+Only the empty state was seen rendered — the result views are unverified against the new palette. The repo-wide record is `00-landing/SESSION_NOTES.md` session 2.
