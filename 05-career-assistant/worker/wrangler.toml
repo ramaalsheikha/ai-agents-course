@@ -1,0 +1,19 @@
+name = "career-assistant-api"
+main = "src/index.js"
+compatibility_date = "2025-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "537fc6a979ac471c82907787a859bd62"
+
+[vars]
+AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+CLIENT_ORIGIN = "http://localhost:5175,https://career-assistant-3by.pages.dev"
+CLIENT_ORIGIN_SUFFIXES = ".career-assistant-3by.pages.dev"

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
+
 function AgentCard({ name, label, status, detail, startTime }) {
   const icons = { resume: "📄", market: "🔍", gap: "🎯" };
   const [elapsed, setElapsed] = useState(0);
@@ -251,7 +253,7 @@ function App() {
     setAgentStatuses(initialStatuses);
 
     try {
-      const startRes = await fetch("http://localhost:3001/api/career/start", {
+      const startRes = await fetch(`${API_URL}/api/career/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -262,7 +264,7 @@ function App() {
       });
       const { sessionId } = await startRes.json();
 
-      const es = new EventSource(`http://localhost:3001/api/career/stream?sessionId=${sessionId}`);
+      const es = new EventSource(`${API_URL}/api/career/stream?sessionId=${sessionId}`);
       abortRef.current = { abort: () => es.close() };
 
       es.onmessage = (event) => {
