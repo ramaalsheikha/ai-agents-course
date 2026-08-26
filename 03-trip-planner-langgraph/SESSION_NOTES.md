@@ -1,6 +1,6 @@
 # Session Notes
 
-Single source of truth for `03-trip-planner-langgraph`. Newest session last; the live state of the system is **session 2 §2**, and the open work is **session 2 §4**.
+Single source of truth for `03-trip-planner-langgraph`. Newest session last; the live state of the system is **session 2 §5**, and the open work is **session 2 §4 item 4**.
 
 ---
 
@@ -233,3 +233,22 @@ Note that the error frame now carries **one** cause rather than session 1's two.
 3. **Confirm the `days` array holds exactly the requested count.** The schema now enforces it, so a wrong count means Workers AI is not honouring `minItems`/`maxItems` — worth knowing before relying on it in `04` too.
 4. **Watch the `gpt-oss` output shape in production.** Still unobserved live. Carried from session 1 §8 item 4.
 5. ~~Consider Workers Paid.~~ Done — the account is on it as of this session.
+
+## 5. Resolved — Verified End to End
+
+The token was set by hand later in the same session, on all four workers that speak MCP (`mcp-search-server`, `personal-assistant-api`, `trip-planner-api`, `a2a-search-agent`), and `wrangler secret list --name trip-planner-api` now shows `MCP_AUTH_TOKEN`.
+
+A full run of `Lisbon / 3 days / $2000 / 2 people` against the deployed worker:
+
+| Check | Result |
+|---|---|
+| Search agent, MCP over Service Binding | completed |
+| Budget agent | completed |
+| Itinerary agent | completed |
+| `result` frame | parsed object, not a string |
+| `days` array | exactly 3, numbered 1-3 |
+| Content | real Lisbon places — Jerónimos Monastery in Belém, priced |
+
+`minItems`/`maxItems` are honoured by Workers AI, which answers §4 item 3 and clears the schema for reuse in `04`. Real place names in the itinerary also confirm the search agent's MCP results actually reached the synthesis prompt, rather than the model filling gaps from memory.
+
+**§4 items 1, 2, and 3 are closed. This project is verified end to end in production.** Item 4 — observing the `gpt-oss` output shape live — is still open, since `toText` handles both shapes silently and nothing in the run distinguishes them.

@@ -14,5 +14,6 @@ binding = "MCP"
 service = "mcp-search-server"
 
 [vars]
+AGENT_URL = "binding://a2a-search-agent"
 TEXT_MODEL = "@cf/openai/gpt-oss-120b"
 MCP_SERVER_URL = "https://mcp-search-server.alsheikharama.workers.dev/mcp"

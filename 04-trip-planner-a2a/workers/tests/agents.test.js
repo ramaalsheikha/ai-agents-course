@@ -105,7 +105,15 @@ beforeEach(() => {
 });
 
 describe("agent card", () => {
-  it("serves the card with the request origin as its url", async () => {
+  it("reports how it is reachable when AGENT_URL is set", async () => {
+    const res = await budgetAgent.fetch(cardRequest(), {
+      AGENT_URL: "binding://a2a-budget-agent",
+    });
+
+    expect((await res.json()).url).toBe("binding://a2a-budget-agent");
+  });
+
+  it("falls back to the request origin when AGENT_URL is unset", async () => {
     const res = await budgetAgent.fetch(cardRequest(), {});
     const card = await res.json();
 

@@ -10,4 +10,5 @@ enabled = true
 binding = "AI"
 
 [vars]
+AGENT_URL = "binding://a2a-itinerary-agent"
 JSON_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"

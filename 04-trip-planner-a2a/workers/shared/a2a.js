@@ -10,7 +10,7 @@ export const createAgentApp = ({ card, label, run }) => {
   const app = new Hono();
 
   app.get("/.well-known/agent.json", (c) =>
-    c.json({ ...card, url: new URL(c.req.url).origin }),
+    c.json({ ...card, url: c.env?.AGENT_URL || new URL(c.req.url).origin }),
   );
 
   app.get("/health", (c) => c.json({ ok: true, agent: card.name }));

@@ -1,6 +1,6 @@
 # Session Notes
 
-Single source of truth for `02-personal-assistant`. Newest session last; the live state of the system is **session 4 §7**, and the open work is **session 4 §8**. Earlier sections are kept as the record of how each decision was reached — where a later session overturned one, the earlier entry is struck through and points forward.
+Single source of truth for `02-personal-assistant`. Newest session last; the live state of the system is **session 4 §7** (with session 5 §2 on the rotated MCP token), and the open work is **session 4 §8**. Earlier sections are kept as the record of how each decision was reached — where a later session overturned one, the earlier entry is struck through and points forward.
 
 Date: 2026-08-25
 Scope: `02-personal-assistant` (Cloudflare Workers API + Pages frontend)
@@ -576,3 +576,30 @@ An external edit to `SESSION_NOTES.md` — session 3's Failure C, its §4 reconc
 5. **`reindex.js` samples at `topK=1000`.** Fine at 22 vectors; a real audit needs `listPaginated` over all ids.
 6. **Make MCP auth non-optional.** Unchanged since session 2. `01-mcp-search-server/worker/src/index.js:122` returns `true` when `MCP_AUTH_TOKEN` is unset, so a lost secret silently opens the endpoint.
 7. **Consider a larger-context model.** The 24000-token window of `llama-3.3-70b-instruct-fp8-fast` is still the constraint behind every limit in `agent.js`, and now behind the trimming that the language directive has to survive.
+
+---
+
+# Session 5 — 2026-08-26
+
+Scope: no code change. Recorded here because the account-level facts changed under this project.
+
+## 1. Workers Paid
+
+The account moved off the free plan, so the 10,000-neuron daily allocation shared by every project on it no longer applies. This was the blocker behind `03` and `05`'s deferred verification, not anything in this worker.
+
+## 2. The MCP Token Was Rotated
+
+`MCP_AUTH_TOKEN` was replaced on all four workers that speak MCP, in one pass: `mcp-search-server`, `personal-assistant-api`, `trip-planner-api`, and `a2a-search-agent`. The last two are new holders — `03` and `04` had never had it, which is why both were returning 401 over their Service Bindings.
+
+Because this worker holds a copy, a rotation that missed it would have taken MCP mode down. It was re-tested immediately afterwards.
+
+## 3. Verification
+
+| Check | Result |
+|---|---|
+| `mcp-search-server` `/health` | 200 `{"ok":true,"server":"serp-search-mcp"}` |
+| `mode: "mcp"` | real SerpAPI weather result for Amman |
+| `mode: "api"` | real result |
+| `mode: "rag"` | Pinecone hit; correctly reported the knowledge base has no weather data |
+
+All three modes work on the rotated token. §8's items are all unchanged — in particular item 6, **make MCP auth non-optional**, is now more pointed than it was: four workers depend on that check, and `01-mcp-search-server/worker/src/index.js:122` still returns `true` when the secret is unset. A rotation that cleared the value rather than replacing it would open the endpoint silently instead of failing loudly.

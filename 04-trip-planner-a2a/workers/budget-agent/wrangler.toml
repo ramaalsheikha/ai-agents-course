@@ -10,4 +10,5 @@ enabled = true
 binding = "AI"
 
 [vars]
+AGENT_URL = "binding://a2a-budget-agent"
 TEXT_MODEL = "@cf/openai/gpt-oss-120b"

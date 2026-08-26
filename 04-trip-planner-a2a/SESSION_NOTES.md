@@ -1,6 +1,6 @@
 # Session Notes
 
-Single source of truth for `04-trip-planner-a2a`. Newest session last; the live state of the system is **session 1 §5**, and the open work is **session 1 §7**.
+Single source of truth for `04-trip-planner-a2a`. Newest session last; the live state of the system is **session 1 §8**, and the open work is **session 1 §9**.
 
 ---
 
@@ -120,3 +120,34 @@ No 4006 anywhere — the account moved to Workers Paid earlier in the session, a
 2. **Re-run the stream afterwards** and confirm a `result` frame with a parsed itinerary object. That is the only part of the flow still unverified in production.
 3. **Confirm the itinerary JSON parses and holds exactly the requested number of days.** The `days` count now rides on a regex over the prompt; if the model returns the wrong number, check `dayCountOf` before blaming the schema.
 4. **Watch the `gpt-oss` output shape in production.** `toText` handles both, but which shape Workers AI returns for `@cf/openai/gpt-oss-120b` has still not been observed live on any project.
+
+## 8. Resolved — Verified End to End
+
+`MCP_AUTH_TOKEN` was set on `a2a-search-agent` with the `--config` flag, and the token was rotated across all four MCP-speaking workers in the account at the same time.
+
+A full run of `Porto / 2 days / $1200 / 2 people`:
+
+| Check | Result |
+|---|---|
+| Discovery | all three cards returned over Service Bindings |
+| Search agent, MCP over Service Binding | completed |
+| Budget agent | completed |
+| Itinerary agent | completed |
+| `result` frame | parsed object |
+| `days` array | exactly 2, numbered 1-2 |
+| Content | real Porto places — the Cathedral and São Francisco, priced |
+
+`dayCountOf` reading the duration out of the prompt works against a live model: a 2-day request produced exactly 2 days, as did a 3-day request on the earlier Lisbon run. **§7 items 1, 2, and 3 are closed. The A2A flow is verified end to end in production.**
+
+### Agent cards now say how they are reachable
+
+The first verified run exposed a cosmetic bug. `createAgentApp` filled `card.url` from the request origin, which over a Service Binding is whatever URL the caller invented — `https://agent.internal`, the placeholder in `a2a-client.js`. The client renders `card.url` directly (`client/src/App.jsx:17`), so the discovery panel showed three agents claiming to live at a hostname that does not exist.
+
+Each agent now carries an `AGENT_URL` var — `binding://a2a-search-agent` and so on — and the card falls back to the request origin when it is unset, which is what `wrangler dev` wants locally. Honest for agents that have no public route at all, and it keeps the point visible in the UI: these are reachable through a binding, not over the internet. Two tests pin both branches; 22 passing.
+
+Agent versions after the fix: search `810c4c81`, budget `265ad3f2`, itinerary `bddcf082`.
+
+## 9. Next Steps
+
+1. **Watch the `gpt-oss` output shape in production.** Carried from §7 item 4, still unobserved on any project — `toText` handles both shapes silently, so a live run cannot distinguish them without logging.
+2. **Consider whether the orchestrator should degrade instead of failing.** A search failure currently kills the run, even though the budget agent has already produced usable output. The A2A protocol has a task state model (`failed`, `input-required`) that this implementation reduces to completed-or-throw.
