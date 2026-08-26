@@ -29,9 +29,7 @@ One self-contained page, no build step and no dependencies. Four cards, one per 
 
 ### The test plan
 
-75 manual acceptance cases across six suites, written against production URLs rather than a local dev server. Published as an artifact:
-
-`https://claude.ai/code/artifact/c11cff9c-456b-4370-a05d-3f2cbc783c36`
+75 manual acceptance cases across seven suites, written against production URLs rather than a local dev server. Lives at `testplan.md` in the repo root — it spans every project, so it does not belong under any one of them.
 
 | Suite | Cases | Range |
 |---|---|---|
@@ -63,9 +61,9 @@ MCP-09, PA-04, PA-17, TP-13, A2A-10, CA-08, and CA-09 document defects that are 
 
 MCP-09 and A2A-10 both reproduce by removing a secret. Both say explicitly: preview or throwaway workers only. Clearing `MCP_AUTH_TOKEN` on the deployed `mcp-search-server` would not break it loudly — it would open the public endpoint, because `isAuthorized` returns `true` when the secret is unset. Four workers authenticate against that check.
 
-### The plan is an artifact, not a repo file
+### The plan is a repo file at the root, not a per-project one
 
-It is a reference someone reads and works through, not source the build consumes. It lives at a stable URL that can be reshared and updated in place.
+It was first published as a hosted artifact, but that link 404'd for the user, so it was rewritten as `testplan.md`. Root rather than per-project: it covers all six deployments plus the landing page, and cross-references cases between them.
 
 ## 4. Deployed Resources
 
