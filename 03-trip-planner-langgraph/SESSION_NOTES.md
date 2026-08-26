@@ -1,6 +1,6 @@
 # Session Notes
 
-Single source of truth for `03-trip-planner-langgraph`. Newest session last; the live state of the system is **session 1 §5**, and the open work is **session 1 §8**.
+Single source of truth for `03-trip-planner-langgraph`. Newest session last; the live state of the system is **session 2 §2**, and the open work is **session 2 §4**.
 
 ---
 
@@ -167,3 +167,69 @@ One-shot cron `2b13c8a4`, firing 03:07 local / 00:07 UTC on 2026-08-27, covering
 3. **Confirm the itinerary JSON parses.** Same risk as `05-career-assistant`: the prompt demands one large strict-schema object and llama is less reliable than Sonnet at that. The `days` array must hold exactly the requested number of days. If it fails, tighten the prompt or pass a `response_format` json_schema to `AI.run` — do not loosen the client parser.
 4. **Watch the `gpt-oss` output shape in production.** `toText` handles both shapes, but which one Workers AI actually returns for `@cf/openai/gpt-oss-120b` has not been observed live. If it returns the `output` array, confirm the reasoning filter is doing its job and the itinerary prompt has no chain of thought in it.
 5. **Consider Workers Paid ($5/mo).** Three projects now share 10,000 neurons/day. Declined for `05` earlier today; the case gets stronger with each project added.
+
+---
+
+# Session 2 — 2026-08-26
+
+Scope: Workers Paid upgrade and structured output on the itinerary agent. Session 1's §8 items 2-5 were all waiting on the neuron reset; the upgrade removed that wait.
+
+## 1. The Quota Blocker Is Gone
+
+The account moved to Workers Paid, so 4006 no longer applies to any project on it. Confirmed against this worker directly: the budget agent now completes and returns a real cost breakdown, where session 1 §6 got only the quota error.
+
+The quota-reset cron `2b13c8a4` was **gone** when this session looked, exactly as session 1 §7 warned it would be. Second confirmed disappearance in two days. Session-scheduled crons are not a mechanism for deferred verification; treat them as a convenience that usually does not fire.
+
+## 2. What Changed
+
+`itineraryAgent` now passes a `response_format` json_schema to `AI.run`, which was session 1 §8 item 3's suggested fix and is now in place ahead of the failure it was meant to prevent:
+
+```js
+response = await runModel({
+  response_format: { type: "json_schema", json_schema: itinerarySchema(days) },
+});
+```
+
+`itinerarySchema(days)` sets `minItems` and `maxItems` on the `days` array to the requested day count, so "include exactly N days" is a constraint rather than a request the prompt makes politely.
+
+Three things guard it:
+
+- If `AI.run` rejects the schema, the call is retried unconstrained and the run degrades to session 1's behaviour instead of failing.
+- `toStructured` returns the object directly when Workers AI hands back `{ response: {...} }`. This matters more than it looks — see `05`'s session 3 §2, where the same shape crashed that worker in production with `text.replace is not a function`.
+- The fence-stripping `JSON.parse` path is untouched as the fallback for a string response.
+
+Three tests added, 25 passing: the schema's day count tracks the request, a structured object is returned without parsing, and a rejected schema retries unconstrained with `response_format` absent the second time.
+
+## 3. Verification
+
+Deployed (`85e64e72-43b9-41f8-b431-6551f7a09dd4`) and streamed:
+
+| Check | Result |
+|---|---|
+| Budget agent, Workers AI inference | **completed** |
+| 4006 errors | none |
+| Search agent, MCP over Service Binding | **401 Unauthorized** |
+| Itinerary agent | not reached |
+
+```
+data: {"type":"error","message":"MCP initialize failed (401): {\"error\":\"Unauthorized\"}"}
+```
+
+The 401 is the only thing left. Session 1 §7's explanation stands unchanged: `mcp-search-server` requires a bearer token, a Service Binding does not bypass that check, and this worker has no `MCP_AUTH_TOKEN`. `wrangler secret list --name trip-planner-api` still returns `[]`. The value is in no local `.dev.vars` or `.env` on this machine — checked again this session — and Cloudflare will not reveal it, so it has to be typed by hand.
+
+Note that the error frame now carries **one** cause rather than session 1's two. That is the point of the upgrade: the AI failure is gone and only the MCP failure remains, which is `Promise.allSettled` reporting accurately, not a regression.
+
+## 4. Next Steps
+
+1. **Set `MCP_AUTH_TOKEN` on `trip-planner-api`**, from the worker directory so wrangler resolves the right config:
+
+   ```bash
+   cd 03-trip-planner-langgraph/worker && npx wrangler secret put MCP_AUTH_TOKEN
+   ```
+
+   `04-trip-planner-a2a`'s search agent needs the same token — see that project's session 1 §7.
+
+2. **Re-run the stream** and confirm a `result` frame with a parsed itinerary object. Everything else in the pipeline is verified; this is the last unverified step.
+3. **Confirm the `days` array holds exactly the requested count.** The schema now enforces it, so a wrong count means Workers AI is not honouring `minItems`/`maxItems` — worth knowing before relying on it in `04` too.
+4. **Watch the `gpt-oss` output shape in production.** Still unobserved live. Carried from session 1 §8 item 4.
+5. ~~Consider Workers Paid.~~ Done — the account is on it as of this session.

@@ -302,6 +302,44 @@ describe("runTripPlanner", () => {
     expect(toolMessage.content).toContain("failed");
   });
 
+  it("constrains the itinerary call with a json_schema matching the requested day count", async () => {
+    const { env, callsFor } = makeEnv();
+
+    await run(env);
+
+    const { response_format: format } = callsFor("itinerary")[0].options;
+    expect(format.type).toBe("json_schema");
+    expect(format.json_schema.properties.days.minItems).toBe(3);
+    expect(format.json_schema.properties.days.maxItems).toBe(3);
+    expect(format.json_schema.required).toContain("budget");
+  });
+
+  it("returns the schema-enforced object without parsing when the model returns one", async () => {
+    const { env } = makeEnv({ itinerary: [{ response: ITINERARY }] });
+
+    await expect(run(env)).resolves.toEqual(ITINERARY);
+  });
+
+  it("retries the itinerary unconstrained when the model rejects the schema", async () => {
+    let attempts = 0;
+    const { env, callsFor } = makeEnv({
+      itinerary: [
+        () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error("schema too complex");
+          return itineraryReply;
+        },
+      ],
+    });
+
+    await expect(run(env)).resolves.toEqual(ITINERARY);
+
+    const calls = callsFor("itinerary");
+    expect(calls).toHaveLength(2);
+    expect(calls[0].options.response_format).toBeDefined();
+    expect(calls[1].options.response_format).toBeUndefined();
+  });
+
   it("synthesizes an answer when the search model returns only tool calls", async () => {
     const { env, callsFor } = makeEnv({
       search: [

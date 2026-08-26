@@ -28,6 +28,91 @@ const toText = (value) => {
   return "";
 };
 
+const SLOT_SCHEMA = {
+  type: "object",
+  properties: {
+    activity: { type: "string" },
+    location: { type: "string" },
+    cost: { type: "string" },
+  },
+  required: ["activity", "location", "cost"],
+};
+
+const itinerarySchema = (days) => ({
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    overview: { type: "string" },
+    accommodation: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        pricePerNight: { type: "string" },
+        notes: { type: "string" },
+      },
+      required: ["name", "pricePerNight", "notes"],
+    },
+    days: {
+      type: "array",
+      minItems: days,
+      maxItems: days,
+      items: {
+        type: "object",
+        properties: {
+          day: { type: "number" },
+          title: { type: "string" },
+          morning: SLOT_SCHEMA,
+          afternoon: SLOT_SCHEMA,
+          evening: SLOT_SCHEMA,
+        },
+        required: ["day", "title", "morning", "afternoon", "evening"],
+      },
+    },
+    budget: {
+      type: "object",
+      properties: {
+        accommodation: { type: "number" },
+        food: { type: "number" },
+        transport: { type: "number" },
+        activities: { type: "number" },
+        misc: { type: "number" },
+        total: { type: "number" },
+        perPerson: { type: "number" },
+        verdict: { type: "string" },
+      },
+      required: [
+        "accommodation",
+        "food",
+        "transport",
+        "activities",
+        "misc",
+        "total",
+        "perPerson",
+        "verdict",
+      ],
+    },
+    transportTips: { type: "array", items: { type: "string" } },
+    diningTips: { type: "array", items: { type: "string" } },
+    travelTips: { type: "array", items: { type: "string" } },
+  },
+  required: [
+    "title",
+    "overview",
+    "accommodation",
+    "days",
+    "budget",
+    "transportTips",
+    "diningTips",
+    "travelTips",
+  ],
+});
+
+const toStructured = (value) => {
+  if (!value || typeof value !== "object") return null;
+  const payload = value.response;
+  return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
+};
+
 const parseArgs = (raw) => {
   if (!raw) return {};
   if (typeof raw === "object") return raw;
@@ -222,11 +307,30 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 
 Budget values must be numbers (no $ sign). Include exactly ${days} days. Be specific with real place names and realistic costs.`;
 
-  const response = await env.AI.run(jsonModel(env), {
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0,
-    max_tokens: ITINERARY_MAX_TOKENS,
-  });
+  const runModel = (extra) =>
+    env.AI.run(jsonModel(env), {
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      max_tokens: ITINERARY_MAX_TOKENS,
+      ...extra,
+    });
+
+  let response;
+
+  try {
+    response = await runModel({
+      response_format: { type: "json_schema", json_schema: itinerarySchema(days) },
+    });
+  } catch (error) {
+    console.error(`[trip] Structured output rejected, retrying unconstrained: ${error.message}`);
+    response = await runModel({});
+  }
+
+  const structured = toStructured(response);
+  if (structured) {
+    console.log("[trip] Itinerary generated (structured: true, schema-enforced)");
+    return structured;
+  }
 
   const cleaned = toText(response)
     .replace(/```json\n?/g, "")
