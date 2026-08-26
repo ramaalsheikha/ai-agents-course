@@ -1,7 +1,7 @@
 .appShell {
   min-height: 100vh;
-  background: #0b0f14;
-  color: rgba(255, 255, 255, 0.9);
+  background: #f7f7f8;
+  color: rgba(24, 24, 27, 0.9);
   display: flex;
   flex-direction: column;
 }
@@ -10,9 +10,9 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(11, 15, 20, 0.9);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(16, 16, 20, 0.1);
 }
 
 .appHeaderInner {
@@ -30,7 +30,7 @@
 .appSubtitle {
   margin-top: 4px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(24, 24, 27, 0.68);
 }
 
 .appMain {
@@ -45,8 +45,8 @@
 }
 
 .uploadPanel {
-  background: #0f1620;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid rgba(16, 16, 20, 0.1);
   border-radius: 14px;
   padding: 12px;
 }
@@ -72,9 +72,9 @@
   justify-content: center;
   padding: 9px 12px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.9);
+  background: rgba(16, 16, 20, 0.05);
+  border: 1px solid rgba(16, 16, 20, 0.14);
+  color: rgba(24, 24, 27, 0.9);
   cursor: pointer;
   user-select: none;
 }
@@ -82,7 +82,7 @@
 .primaryButton {
   padding: 9px 12px;
   border-radius: 12px;
-  background: #10a37f;
+  background: #0a7f63;
   border: 1px solid rgba(16, 163, 127, 0.4);
   color: white;
 }
@@ -94,7 +94,7 @@
 
 .uploadMeta {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(24, 24, 27, 0.68);
   flex: 1;
   min-width: 220px;
   overflow: hidden;
@@ -105,16 +105,16 @@
 .uploadStatus {
   margin-top: 10px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(24, 24, 27, 0.8);
 }
 
 .chatPanel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(16, 16, 20, 0.1);
   border-radius: 14px;
-  background: #0c1118;
+  background: #f1f1f3;
   overflow: hidden;
 }
 
@@ -125,7 +125,7 @@
 }
 
 .emptyState {
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(24, 24, 27, 0.68);
   font-size: 14px;
   line-height: 1.4;
   padding: 28px 10px;
@@ -155,15 +155,15 @@
 }
 
 .messageRow.isUser .messageBubble {
-  background: #10a37f;
-  color: #08130f;
+  background: #0a7f63;
+  color: #ffffff;
   border: 1px solid rgba(16, 163, 127, 0.35);
 }
 
 .messageRow.isAi .messageBubble {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(16, 16, 20, 0.05);
+  color: rgba(24, 24, 27, 0.92);
+  border: 1px solid rgba(16, 16, 20, 0.1);
 }
 
 .messageBubble.isTyping {
@@ -171,8 +171,8 @@
 }
 
 .composer {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(11, 15, 20, 0.6);
+  border-top: 1px solid rgba(16, 16, 20, 0.1);
+  background: rgba(255, 255, 255, 0.7);
   padding: 12px;
 }
 
@@ -180,8 +180,8 @@
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(16, 16, 20, 0.05);
+  border: 1px solid rgba(16, 16, 20, 0.14);
   border-radius: 14px;
   padding: 10px;
 }
@@ -192,7 +192,7 @@
   border: none;
   outline: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(24, 24, 27, 0.92);
   font-size: 14px;
   line-height: 1.4;
   min-height: 22px;
@@ -202,9 +202,9 @@
 .sendButton {
   padding: 9px 12px;
   border-radius: 12px;
-  background: #1f2937;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.9);
+  background: #e9e9ec;
+  border: 1px solid rgba(16, 16, 20, 0.14);
+  color: rgba(24, 24, 27, 0.9);
 }
 
 .sendButton:disabled {
@@ -215,7 +215,7 @@
 .composerHint {
   margin-top: 8px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(24, 24, 27, 0.62);
   padding: 0 4px;
 }
 
@@ -235,45 +235,45 @@
   letter-spacing: 0.4px;
   cursor: pointer;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.55);
+  background: rgba(16, 16, 20, 0.05);
+  color: rgba(24, 24, 27, 0.62);
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .modeButton:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.85);
+  background: rgba(16, 16, 20, 0.12);
+  color: rgba(24, 24, 27, 0.85);
 }
 
 /* Active states per mode */
 .modeButton--rag.isActive {
   background: rgba(139, 92, 246, 0.18);
   border-color: rgba(139, 92, 246, 0.5);
-  color: #c4b5fd;
+  color: #6d28d9;
 }
 
 .modeButton--api.isActive {
   background: rgba(234, 179, 8, 0.15);
   border-color: rgba(234, 179, 8, 0.45);
-  color: #fde68a;
+  color: #854d0e;
 }
 
 .modeButton--mcp.isActive {
   background: rgba(34, 197, 94, 0.15);
   border-color: rgba(34, 197, 94, 0.4);
-  color: #86efac;
+  color: #15803d;
 }
 
 .modeButton--mcp-stdio.isActive {
   background: rgba(251, 191, 36, 0.12);
   border-color: rgba(251, 191, 36, 0.4);
-  color: #fcd34d;
+  color: #a16207;
 }
 
 .modeDescription {
   margin-top: 6px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(24, 24, 27, 0.55);
   min-height: 16px;
 }
 
@@ -292,25 +292,25 @@
 
 .modeBadge--rag {
   background: rgba(139, 92, 246, 0.2);
-  color: #c4b5fd;
+  color: #6d28d9;
   border: 1px solid rgba(139, 92, 246, 0.35);
 }
 
 .modeBadge--api {
   background: rgba(234, 179, 8, 0.18);
-  color: #fde68a;
+  color: #854d0e;
   border: 1px solid rgba(234, 179, 8, 0.35);
 }
 
 .modeBadge--mcp {
   background: rgba(34, 197, 94, 0.15);
-  color: #86efac;
+  color: #15803d;
   border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 .modeBadge--mcp-stdio {
   background: rgba(251, 191, 36, 0.12);
-  color: #fcd34d;
+  color: #a16207;
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
 
@@ -329,8 +329,8 @@
 .messageBubble.isError,
 .messageRow.isAi .messageBubble.isError {
   background: rgba(239, 68, 68, 0.08);
-  border: 1px solid #ef4444;
-  color: #fecaca;
+  border: 1px solid #dc2626;
+  color: #b91c1c;
 }
 
 .errorContent {
@@ -350,8 +350,8 @@
   align-items: flex-start;
   gap: 8px;
   padding: 8px 10px;
-  border: 1px solid #ef4444;
+  border: 1px solid #dc2626;
   border-radius: 10px;
   background: rgba(239, 68, 68, 0.08);
-  color: #fecaca;
+  color: #b91c1c;
 }

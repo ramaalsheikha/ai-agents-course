@@ -2,8 +2,8 @@
 
 .appShell {
   min-height: 100vh;
-  background: #0b0f14;
-  color: rgba(255, 255, 255, 0.9);
+  background: #f7f7f8;
+  color: rgba(24, 24, 27, 0.9);
   display: flex;
   flex-direction: column;
 }
@@ -12,9 +12,9 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(11, 15, 20, 0.9);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(16, 16, 20, 0.1);
 }
 
 .appHeaderInner {
@@ -32,7 +32,7 @@
 .appSubtitle {
   margin-top: 4px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(24, 24, 27, 0.68);
 }
 
 .appMain {
@@ -49,8 +49,8 @@
 /* ── Form panel ───────────────────────────────────────────── */
 
 .formPanel {
-  background: #0f1620;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid rgba(16, 16, 20, 0.1);
   border-radius: 14px;
   padding: 18px;
 }
@@ -78,7 +78,7 @@
 .formLabel {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(24, 24, 27, 0.62);
   letter-spacing: 0.4px;
   text-transform: uppercase;
 }
@@ -87,9 +87,9 @@
 .formTextarea {
   padding: 9px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.92);
+  background: rgba(16, 16, 20, 0.05);
+  border: 1px solid rgba(16, 16, 20, 0.14);
+  color: rgba(24, 24, 27, 0.92);
   font-size: 14px;
   font-family: inherit;
   outline: none;
@@ -129,22 +129,22 @@
 .resetButton {
   padding: 10px 18px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.75);
+  background: rgba(16, 16, 20, 0.05);
+  border: 1px solid rgba(16, 16, 20, 0.14);
+  color: rgba(24, 24, 27, 0.75);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s;
 }
 
-.resetButton:hover { background: rgba(255, 255, 255, 0.1); }
+.resetButton:hover { background: rgba(16, 16, 20, 0.12); }
 
 /* ── Agent panel ──────────────────────────────────────────── */
 
 .agentPanel {
-  background: #0f1620;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid rgba(16, 16, 20, 0.1);
   border-radius: 14px;
   padding: 16px 18px;
 }
@@ -152,7 +152,7 @@
 .agentPanelTitle {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(24, 24, 27, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 12px;
@@ -172,25 +172,25 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(16, 16, 20, 0.1);
   transition: border-color 0.2s, background 0.2s;
 }
 
-.agentCard--pending { background: rgba(255, 255, 255, 0.03); }
+.agentCard--pending { background: rgba(16, 16, 20, 0.03); }
 .agentCard--working { background: rgba(30, 48, 186, 0.07); border-color: rgba(30, 48, 186, 0.3); }
 .agentCard--done { background: rgba(7, 220, 166, 0.07); border-color: rgba(7, 220, 166, 0.3); }
 
 .agentIcon { font-size: 22px; }
-.agentName { font-size: 14px; font-weight: 600; color: rgba(255, 255, 255, 0.9); }
+.agentName { font-size: 14px; font-weight: 600; color: rgba(24, 24, 27, 0.9); }
 
 .agentStatus { font-size: 12px; font-weight: 500; }
-.agentStatus--pending { color: rgba(255, 255, 255, 0.35); }
-.agentStatus--working { color: #ADD4FD; animation: pulse 1.2s ease-in-out infinite; }
-.agentStatus--done { color: #07DCA6; }
+.agentStatus--pending { color: rgba(24, 24, 27, 0.5); }
+.agentStatus--working { color: #2563eb; animation: pulse 1.2s ease-in-out infinite; }
+.agentStatus--done { color: #0d9488; }
 
 .agentDetail {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(24, 24, 27, 0.55);
   margin-top: 2px;
   font-style: italic;
 }
@@ -210,8 +210,8 @@
 
 /* Score card */
 .scoreCard {
-  background: #0f1620;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid rgba(16, 16, 20, 0.1);
   border-radius: 14px;
   padding: 24px;
   display: flex;
@@ -244,7 +244,7 @@
 .scoreLabel {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(24, 24, 27, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 6px;
@@ -253,13 +253,13 @@
 .scoreDescription {
   font-size: 14px;
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(24, 24, 27, 0.75);
 }
 
 /* Collapsible sections */
 .section {
-  background: #0f1620;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid rgba(16, 16, 20, 0.1);
   border-radius: 14px;
   overflow: hidden;
 }
@@ -272,18 +272,18 @@
   align-items: center;
   background: transparent;
   border: none;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(24, 24, 27, 0.9);
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
   font-family: inherit;
 }
 
-.sectionHeader:hover { background: rgba(255, 255, 255, 0.03); }
+.sectionHeader:hover { background: rgba(16, 16, 20, 0.03); }
 
 .sectionChevron {
   font-size: 18px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(24, 24, 27, 0.55);
   width: 24px;
   text-align: center;
 }
@@ -302,8 +302,8 @@
 .gapItem {
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 16, 20, 0.03);
+  border: 1px solid rgba(16, 16, 20, 0.05);
 }
 
 .gapItemHeader {
@@ -316,12 +316,12 @@
 .gapSkill {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(24, 24, 27, 0.9);
 }
 
 .gapNote {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(24, 24, 27, 0.62);
   line-height: 1.4;
 }
 
@@ -345,7 +345,7 @@
 .actionTimeframe {
   font-size: 12px;
   font-weight: 600;
-  color: #ADD4FD;
+  color: #2563eb;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-bottom: 6px;
@@ -356,7 +356,7 @@
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(24, 24, 27, 0.8);
 }
 
 .actionList li { margin: 2px 0; }
@@ -376,8 +376,8 @@
   gap: 10px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 16, 20, 0.03);
+  border: 1px solid rgba(16, 16, 20, 0.05);
 }
 
 .resourceType { font-size: 20px; }
@@ -385,14 +385,14 @@
 .resourceLabel {
   font-size: 10px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(24, 24, 27, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .resourceName {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.85);
+  color: rgba(24, 24, 27, 0.85);
 }
 
 /* Tips */
@@ -401,7 +401,7 @@
   padding-left: 18px;
   font-size: 13px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(24, 24, 27, 0.8);
 }
 
 .tipList li { margin: 2px 0; }
@@ -420,7 +420,7 @@
   padding: 4px 10px;
   border-radius: 8px;
   background: rgba(30, 48, 186, 0.15);
-  color: #ADD4FD;
+  color: #2563eb;
   border: 1px solid rgba(30, 48, 186, 0.25);
   text-transform: capitalize;
 }
@@ -432,7 +432,7 @@
 .tagLabel {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(24, 24, 27, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   margin-bottom: 6px;
@@ -448,20 +448,20 @@
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(16, 16, 20, 0.05);
+  color: rgba(24, 24, 27, 0.75);
+  border: 1px solid rgba(16, 16, 20, 0.12);
 }
 
 .tag--market {
   background: rgba(7, 220, 166, 0.1);
-  color: #07DCA6;
+  color: #0d9488;
   border-color: rgba(7, 220, 166, 0.2);
 }
 
 .tag--company {
   background: rgba(249, 230, 99, 0.1);
-  color: #F9E663;
+  color: #a16207;
   border-color: rgba(249, 230, 99, 0.2);
 }
 
@@ -476,14 +476,14 @@
   flex: 1;
   padding: 12px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 16, 20, 0.03);
+  border: 1px solid rgba(16, 16, 20, 0.05);
 }
 
 .marketStatLabel {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(24, 24, 27, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   margin-bottom: 4px;
@@ -492,7 +492,7 @@
 .marketStatValue {
   font-size: 15px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(24, 24, 27, 0.9);
 }
 
 /* ── Error banner ─────────────────────────────────────────── */
@@ -503,5 +503,5 @@
   border-radius: 12px;
   padding: 14px 16px;
   font-size: 14px;
-  color: #fca5a5;
+  color: #dc2626;
 }
