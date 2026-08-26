@@ -1,0 +1,20 @@
+name = "trip-planner-api"
+main = "src/index.js"
+compatibility_date = "2026-08-24"
+
+[observability]
+enabled = true
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "MCP"
+service = "mcp-search-server"
+
+[vars]
+TEXT_MODEL = "@cf/openai/gpt-oss-120b"
+JSON_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+MCP_SERVER_URL = "https://mcp-search-server.alsheikharama.workers.dev/mcp"
+CLIENT_ORIGIN = "http://localhost:5174,https://trip-planner-8xe.pages.dev"
+CLIENT_ORIGIN_SUFFIXES = ".trip-planner-8xe.pages.dev"

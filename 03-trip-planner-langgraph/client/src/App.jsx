@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
+
 function AgentCard({ name, status }) {
   const labels = { pending: "Pending", working: "Working...", done: "Done" };
   const icons = { search: "🔍", budget: "💰", itinerary: "🗺️" };
@@ -212,7 +214,7 @@ function App() {
       people: String(people),
     });
 
-    const es = new EventSource(`http://localhost:3001/api/trip/stream?${params}`);
+    const es = new EventSource(`${API_URL}/api/trip/stream?${params}`);
     esRef.current = es;
 
     es.onmessage = (event) => {
