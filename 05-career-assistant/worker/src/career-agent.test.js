@@ -74,7 +74,83 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function laneOf(options) {
+  const text = options.messages[0].content;
+  if (text.includes("expert resume analyst")) return "resume";
+  if (text.includes("job market analyst")) return "market";
+  return "gap";
+}
+
 describe("runCareerAssistant", () => {
+  it("constrains every node with the json_schema for its own payload", async () => {
+    vi.stubGlobal("fetch", stubFetchOk());
+    const { env, calls } = makeEnv({
+      replies: [
+        { response: JSON.stringify(RESUME_JSON) },
+        { response: JSON.stringify(MARKET_JSON) },
+        { response: JSON.stringify(GAP_JSON) },
+      ],
+    });
+
+    await run(env);
+
+    const schemaFor = (lane) =>
+      calls.find((c) => laneOf(c.options) === lane).options.response_format;
+
+    expect(schemaFor("resume").type).toBe("json_schema");
+    expect(schemaFor("resume").json_schema.required).toContain("yearsExperience");
+    expect(schemaFor("market").json_schema.required).toContain("topSkills");
+    expect(schemaFor("gap").json_schema.required).toContain("readinessScore");
+  });
+
+  it("serializes a schema-enforced object response back to JSON text", async () => {
+    vi.stubGlobal("fetch", stubFetchOk());
+    const { env } = makeEnv({
+      replies: [
+        { response: RESUME_JSON },
+        { response: MARKET_JSON },
+        { response: GAP_JSON },
+      ],
+    });
+
+    const result = await run(env);
+
+    expect(JSON.parse(result.resumeAnalysis)).toEqual(RESUME_JSON);
+    expect(JSON.parse(result.marketResearch)).toEqual(MARKET_JSON);
+    expect(JSON.parse(result.gapAnalysis)).toEqual(GAP_JSON);
+  });
+
+  it("retries a node unconstrained when the model rejects its schema", async () => {
+    vi.stubGlobal("fetch", stubFetchOk());
+
+    const payloads = { resume: RESUME_JSON, market: MARKET_JSON, gap: GAP_JSON };
+    const calls = [];
+    const env = {
+      SERPAPI_API_KEY: "serp-test-key",
+      AI: {
+        run: vi.fn(async (modelId, options) => {
+          const lane = laneOf(options);
+          calls.push({ lane, options });
+
+          if (lane === "resume" && options.response_format) {
+            throw new Error("json_schema not supported for this model");
+          }
+
+          return { response: JSON.stringify(payloads[lane]) };
+        }),
+      },
+    };
+
+    const result = await run(env);
+
+    expect(JSON.parse(result.resumeAnalysis)).toEqual(RESUME_JSON);
+
+    const resumeCalls = calls.filter((c) => c.lane === "resume");
+    expect(resumeCalls).toHaveLength(2);
+    expect(resumeCalls[1].options.response_format).toBeUndefined();
+    expect(calls.filter((c) => c.lane === "gap")).toHaveLength(1);
+  });
+
   it("returns all three payloads parseable as JSON when the model fences them", async () => {
     vi.stubGlobal("fetch", stubFetchOk());
     const { env } = makeEnv({

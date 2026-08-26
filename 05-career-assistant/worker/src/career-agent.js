@@ -11,14 +11,107 @@ const CareerState = Annotation.Root({
   env: Annotation({ reducer: (_, v) => v }),
 });
 
-async function invokeModel(env, prompt, temperature) {
-  const response = await env.AI.run(env.AI_MODEL || DEFAULT_MODEL, {
-    messages: [{ role: "user", content: prompt }],
-    temperature,
-    max_tokens: 2048,
-  });
-  const text = typeof response === "string" ? response : response.response || "";
-  return text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+const STRING_ARRAY = { type: "array", items: { type: "string" } };
+
+const RESUME_SCHEMA = {
+  type: "object",
+  properties: {
+    level: { type: "string" },
+    yearsExperience: { type: "number" },
+    domain: { type: "string" },
+    skills: STRING_ARRAY,
+    strengths: STRING_ARRAY,
+    gaps: STRING_ARRAY,
+  },
+  required: ["level", "yearsExperience", "domain", "skills", "strengths", "gaps"],
+};
+
+const MARKET_SCHEMA = {
+  type: "object",
+  properties: {
+    topSkills: STRING_ARRAY,
+    experienceRange: { type: "string" },
+    salaryRange: { type: "string" },
+    topCompanies: STRING_ARRAY,
+    keyTrends: STRING_ARRAY,
+  },
+  required: ["topSkills", "experienceRange", "salaryRange", "topCompanies", "keyTrends"],
+};
+
+const GAP_SCHEMA = {
+  type: "object",
+  properties: {
+    readinessScore: { type: "number" },
+    readinessLabel: { type: "string" },
+    skillGaps: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          skill: { type: "string" },
+          severity: { type: "string" },
+          note: { type: "string" },
+        },
+        required: ["skill", "severity", "note"],
+      },
+    },
+    actions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          timeframe: { type: "string" },
+          items: STRING_ARRAY,
+        },
+        required: ["timeframe", "items"],
+      },
+    },
+    resources: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string" },
+          name: { type: "string" },
+        },
+        required: ["type", "name"],
+      },
+    },
+    resumeTips: STRING_ARRAY,
+  },
+  required: [
+    "readinessScore",
+    "readinessLabel",
+    "skillGaps",
+    "actions",
+    "resources",
+    "resumeTips",
+  ],
+};
+
+async function invokeModel(env, prompt, temperature, schema) {
+  const model = env.AI_MODEL || DEFAULT_MODEL;
+  const runModel = (extra) =>
+    env.AI.run(model, {
+      messages: [{ role: "user", content: prompt }],
+      temperature,
+      max_tokens: 2048,
+      ...extra,
+    });
+
+  let response;
+
+  try {
+    response = await runModel({ response_format: { type: "json_schema", json_schema: schema } });
+  } catch (error) {
+    console.error(`[career] Structured output rejected, retrying unconstrained: ${error.message}`);
+    response = await runModel({});
+  }
+
+  const payload = typeof response === "string" ? response : response?.response ?? "";
+  if (payload && typeof payload === "object") return JSON.stringify(payload);
+
+  return String(payload).replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 }
 
 function wrapWithProgress(name, nodeFn, onProgress) {
@@ -54,7 +147,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 Keep each array to 5-8 items max. Be specific.`;
 
   onDetail("Analyzing skills and experience...");
-  const resumeAnalysis = await invokeModel(env, prompt, 0);
+  const resumeAnalysis = await invokeModel(env, prompt, 0, RESUME_SCHEMA);
   console.log(`[career] Resume analysis obtained (${resumeAnalysis.length} chars)`);
 
   return { resumeAnalysis };
@@ -106,7 +199,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 Keep arrays to 5-8 items max. topSkills should be the most frequently mentioned technical skills across all postings.`;
 
   onDetail("Extracting market insights...");
-  const marketResearch = await invokeModel(env, prompt, 0);
+  const marketResearch = await invokeModel(env, prompt, 0, MARKET_SCHEMA);
   console.log(`[career] Market research obtained (${marketResearch.length} chars)`);
 
   return { marketResearch };
@@ -149,7 +242,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 Keep it concise. Max 6 skill gaps, 3 items per timeframe, 4 resources, 3 resume tips.`;
 
   onDetail("Generating recommendations...");
-  const gapAnalysis = await invokeModel(env, prompt, 0.3);
+  const gapAnalysis = await invokeModel(env, prompt, 0.3, GAP_SCHEMA);
   console.log(`[career] Gap analysis generated (${gapAnalysis.length} chars)`);
 
   return { gapAnalysis };

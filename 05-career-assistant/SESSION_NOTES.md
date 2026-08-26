@@ -1,6 +1,6 @@
 # Session Notes
 
-Single source of truth for `05-career-assistant`. Newest session last; the live state of the system is **session 2 §3**, and the open work is **session 2 §4**.
+Single source of truth for `05-career-assistant`. Newest session last; the live state of the system is **session 3 §3**, and the open work is **session 3 §5**.
 
 ---
 
@@ -243,3 +243,80 @@ Workers Paid was declined; the project stays on the 10,000 neuron/day free tier.
 1. **Re-run the end-to-end test after 00:00 UTC 2026-08-27.** Still the top item, still unverified. `POST /api/career/start` then `GET /api/career/stream` against `https://career-assistant-api.alsheikharama.workers.dev` and read the `result` frame. Cron `2b13c8a4` is scheduled to do this, with the caveats in §1.
 2. **Confirm the three JSON payloads parse.** Same open risk as session 1 §7 item 2: llama-3.3-70b is less reliable than Sonnet at "respond ONLY with valid JSON" and the prompts were carried over unchanged. If parsing fails, tighten the prompts or pass a `response_format` json_schema to `AI.run` — do not loosen the client parser.
 3. **Consider a `response_format` json_schema on `AI.run`.** The tests prove the fence stripping handles what the model *might* wrap the JSON in, but they cannot prove llama will emit well-formed JSON in the first place; only item 1 can. A json_schema would make item 2 a non-issue rather than a tested-around risk.
+
+---
+
+# Session 3 — 2026-08-26
+
+Scope: Workers Paid upgrade, structured output, and the first end-to-end run this project has ever completed in production.
+
+## 1. The Quota Blocker Is Gone
+
+The account moved to Workers Paid, so the 4006 daily-neuron error that blocked sessions 1 and 2 no longer applies. Every deferred end-to-end test became runnable immediately, ahead of the 00:00 UTC reset the cron was scheduled around.
+
+That cron, `2b13c8a4`, was **gone** when this session looked — `CronList` returned nothing, the same disappearance `8e8d6af1` suffered before it. Cron jobs scheduled from a session do not survive it. This is now the second confirmed instance; stop relying on them for deferred verification.
+
+## 2. The First Live Run Failed, and Not on JSON
+
+Running the deployed worker end-to-end produced:
+
+```
+data: {"type":"error","message":"text.replace is not a function"}
+```
+
+`invokeModel` assumed `response.response` was a string:
+
+```js
+const text = typeof response === "string" ? response : response.response || "";
+return text.replace(/```json\n?/g, "")...
+```
+
+Workers AI returned an **object** there instead. Session 2's tests could not have caught this: every stubbed reply was a string, because a string was the only shape anyone knew the model returned. The bug was live in production from the session 1 deploy onward and no amount of unit testing would have surfaced it — only inference would.
+
+## 3. What Was Done
+
+### `response_format` json_schema on all three payloads
+
+Session 2 §4 item 3 said a json_schema would turn "will llama emit valid JSON" from a tested-around risk into a non-issue. Done. `RESUME_SCHEMA`, `MARKET_SCHEMA`, and `GAP_SCHEMA` are declared in `career-agent.js` and passed per node:
+
+```js
+response = await runModel({ response_format: { type: "json_schema", json_schema: schema } });
+```
+
+If the model rejects the schema, `invokeModel` logs and retries unconstrained, so a schema Workers AI cannot compile degrades to session 2's behaviour rather than failing the run.
+
+### Object payloads handled
+
+The fix for §2. `invokeModel` now stringifies an object payload and only runs the fence-stripping regexes over a string. The graph state and the client still see JSON text, so nothing downstream changed.
+
+### Tests
+
+Three added, 24 passing:
+
+- every node is constrained with the schema for its own payload
+- a schema-enforced object response is serialized back to JSON text
+- a node whose schema is rejected retries unconstrained, and the other nodes are untouched
+
+The retry test builds its own `env` rather than using `makeEnv`, because the reply queue there is indexed by call order and a mid-flight retry shifts every later index.
+
+## 4. Verification
+
+Deployed (`f27fb782-5420-41c9-930e-3fd4601a6ef8`) and run end-to-end against `https://career-assistant-api.alsheikharama.workers.dev`:
+
+| Check | Result |
+|---|---|
+| `POST /api/career/start` | 200, session id returned |
+| `GET /api/career/stream` | full frame sequence, `result` frame received |
+| `resumeAnalysis` parses | yes, all 6 keys |
+| `marketResearch` parses | yes, all 5 keys |
+| `gapAnalysis` parses | yes, all 6 keys, `readinessScore: 60` |
+| 4006 errors | none |
+
+**Session 1 §7 item 1 and session 2 §4 items 1-3 are all closed.** This project is verified end to end in production.
+
+One observation worth keeping: the market researcher reported `Found 0 jobs`. SerpAPI returned no `google_jobs_results` for "Senior Android Engineer in Germany", and the node carried on and produced market insights from an empty posting list. That is the model inventing a market, which is exactly what the prompt tells it not to do.
+
+## 5. Next Steps
+
+1. **Decide what an empty SerpAPI result should do.** Right now zero postings still produces confident `topSkills` and a `salaryRange`. Either fail the node loudly or mark the payload as unsourced so the client can say so. Nothing in the UI currently distinguishes real market data from invented market data.
+2. **Check whether `engine=google_jobs` is still returning results at all.** If SerpAPI has changed or the plan no longer covers that engine, the whole market lane is decorative.
