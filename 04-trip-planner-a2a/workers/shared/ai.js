@@ -16,7 +16,13 @@ export const toText = (value) => {
         .filter(Boolean)
         .join("");
     }
-    return toText(value.response ?? value.text ?? value.content ?? "");
+    const direct = value.response ?? value.text ?? value.content;
+    if (direct !== undefined && direct !== null) return toText(direct);
+
+    if (Array.isArray(value.choices)) {
+      const message = value.choices[0]?.message;
+      if (message) return toText(message.content ?? message.text ?? "");
+    }
   }
 
   return "";

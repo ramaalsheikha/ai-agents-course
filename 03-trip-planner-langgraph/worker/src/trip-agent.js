@@ -22,7 +22,13 @@ const toText = (value) => {
         .filter(Boolean)
         .join("");
     }
-    return toText(value.response ?? value.text ?? value.content ?? "");
+    const direct = value.response ?? value.text ?? value.content;
+    if (direct !== undefined && direct !== null) return toText(direct);
+
+    if (Array.isArray(value.choices)) {
+      const message = value.choices[0]?.message;
+      if (message) return toText(message.content ?? message.text ?? "");
+    }
   }
 
   return "";
@@ -123,8 +129,11 @@ const parseArgs = (raw) => {
   }
 };
 
+const rawToolCalls = (output) =>
+  output?.tool_calls ?? output?.choices?.[0]?.message?.tool_calls ?? [];
+
 const normalizeToolCalls = (output) =>
-  (output?.tool_calls ?? [])
+  rawToolCalls(output)
     .map((call, index) => ({
       id: call.id ?? `call_${index}`,
       name: call.name ?? call.function?.name,

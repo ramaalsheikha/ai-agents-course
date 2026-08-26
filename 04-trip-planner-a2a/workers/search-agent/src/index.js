@@ -37,8 +37,11 @@ const parseArgs = (raw) => {
   }
 };
 
+const rawToolCalls = (output) =>
+  output?.tool_calls ?? output?.choices?.[0]?.message?.tool_calls ?? [];
+
 const normalizeToolCalls = (output) =>
-  (output?.tool_calls ?? [])
+  rawToolCalls(output)
     .map((call, index) => ({
       id: call.id ?? `call_${index}`,
       name: call.name ?? call.function?.name,
