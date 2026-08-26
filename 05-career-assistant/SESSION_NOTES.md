@@ -221,7 +221,7 @@ All of `05-career-assistant` is committed. Working tree clean except for anythin
 | Path | State |
 |---|---|
 | `worker/src/index.js`, `worker/src/cors.js` | committed, deployed |
-| `worker/src/career-agent.js` | committed, **has `flattenGraphError` not yet deployed** |
+| `worker/src/career-agent.js` | committed and deployed, with `flattenGraphError` |
 | `worker/src/cors.test.js` | committed, 9 passing |
 | `worker/src/career-agent.test.js` | committed, 12 passing |
 | `worker/package.json` | committed, now has vitest + `npm test` |
@@ -232,12 +232,12 @@ All of `05-career-assistant` is committed. Working tree clean except for anythin
 | `README.md` | committed, rewritten |
 | `server/**` | unchanged since before session 1 |
 
-Deployed resources are unchanged from session 1 §4. The worker was **not** redeployed after `flattenGraphError` landed, so the deployed version `eda8e10e` still leaks the `Multiple errors occurred during superstep 1` placeholder when both branches fail together. Nothing in `client/` changed, so Pages needs no redeploy.
+The worker was redeployed after `flattenGraphError` landed — version `4ab55cc0-b7c9-4106-9129-2eef1fed2975`, superseding session 1's `eda8e10e`. Post-deploy checks: `/api/health` 200 with ACAO echoed for the Pages origin, no ACAO for a foreign origin. Nothing in `client/` changed, so Pages was not redeployed and the URLs in session 1 §4 still stand.
+
+Workers Paid was declined; the project stays on the 10,000 neuron/day free tier.
 
 ## 4. Next Steps
 
 1. **Re-run the end-to-end test after 00:00 UTC 2026-08-27.** Still the top item, still unverified. `POST /api/career/start` then `GET /api/career/stream` against `https://career-assistant-api.alsheikharama.workers.dev` and read the `result` frame.
 2. **Confirm the three JSON payloads parse.** Same open risk as session 1 §7 item 2: llama-3.3-70b is less reliable than Sonnet at "respond ONLY with valid JSON" and the prompts were carried over unchanged. If parsing fails, tighten the prompts or pass a `response_format` json_schema to `AI.run` — do not loosen the client parser.
-3. **Consider Workers Paid ($5/mo).** 10,000 neurons/day is thin for a three-call graph sharing the account with `02-personal-assistant`.
-4. **Redeploy the worker** so `flattenGraphError` is live. `npm --prefix worker run deploy`. Low urgency — it only changes the error text — but it should go out before the next round of quota-limited testing, since that is exactly the case it improves.
-5. **Consider a `response_format` json_schema on `AI.run`.** The tests prove the fence stripping handles what the model *might* wrap the JSON in, but they cannot prove llama will emit well-formed JSON in the first place; only item 1 can. A json_schema would make item 2 a non-issue rather than a tested-around risk.
+3. **Consider a `response_format` json_schema on `AI.run`.** The tests prove the fence stripping handles what the model *might* wrap the JSON in, but they cannot prove llama will emit well-formed JSON in the first place; only item 1 can. A json_schema would make item 2 a non-issue rather than a tested-around risk.
