@@ -81,13 +81,24 @@ function Section({ title, children, defaultOpen = false }) {
   );
 }
 
-function parseJSON(str) {
+function parseJSON(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
   try {
-    const cleaned = str.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(cleaned);
+    const cleaned = value.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function list(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function EmptyNote({ children }) {
+  return <div className="emptyNote">{children}</div>;
 }
 
 function ResultView({ data }) {
@@ -99,67 +110,92 @@ function ResultView({ data }) {
     return <div className="errorBanner">Failed to parse analysis results. Please try again.</div>;
   }
 
+  const skillGaps = list(gap.skillGaps);
+  const actions = list(gap.actions).filter((a) => list(a.items).length > 0);
+  const resources = list(gap.resources);
+  const resumeTips = list(gap.resumeTips);
+  const achievements = list(resume?.achievements);
+  const score = Number.isFinite(gap.readinessScore) ? gap.readinessScore : 0;
+
   return (
     <div className="resultView">
-      {/* Hero: Score */}
       <div className="scoreCard">
-        <ScoreRing score={gap.readinessScore} />
+        <ScoreRing score={score} />
         <div className="scoreInfo">
           <div className="scoreLabel">Readiness Score</div>
-          <div className="scoreDescription">{gap.readinessLabel}</div>
+          <div className="scoreDescription">
+            {gap.readinessLabel || `Scored ${score}% against the sampled postings.`}
+          </div>
         </div>
       </div>
 
-      {/* Skill Gaps */}
       <Section title="Skill Gaps" defaultOpen={true}>
-        <div className="gapList">
-          {gap.skillGaps.map((g, i) => (
-            <div key={i} className="gapItem">
-              <div className="gapItemHeader">
-                <span className="gapSkill">{g.skill}</span>
-                <SeverityBadge severity={g.severity} />
+        {skillGaps.length === 0 ? (
+          <EmptyNote>
+            No skill gap was found against the postings we sampled. Focus on evidence and positioning
+            rather than new skills.
+          </EmptyNote>
+        ) : (
+          <div className="gapList">
+            {skillGaps.map((g, i) => (
+              <div key={i} className="gapItem">
+                <div className="gapItemHeader">
+                  <span className="gapSkill">{g.skill}</span>
+                  <SeverityBadge severity={g.severity} />
+                </div>
+                {g.note && <div className="gapNote">{g.note}</div>}
               </div>
-              <div className="gapNote">{g.note}</div>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      {/* Action Plan */}
-      <Section title="Action Plan" defaultOpen={true}>
-        {gap.actions.map((a, i) => (
-          <div key={i} className="actionGroup">
-            <div className="actionTimeframe">{a.timeframe}</div>
-            <ul className="actionList">
-              {a.items.map((item, j) => <li key={j}>{item}</li>)}
-            </ul>
+            ))}
           </div>
-        ))}
+        )}
       </Section>
 
-      {/* Resources */}
-      <Section title="Recommended Resources">
-        <div className="resourceGrid">
-          {gap.resources.map((r, i) => (
-            <div key={i} className="resourceItem">
-              <span className="resourceType">{r.type === "course" ? "📚" : r.type === "cert" ? "🏆" : "🛠️"}</span>
-              <div>
-                <div className="resourceLabel">{r.type}</div>
-                <div className="resourceName">{r.name}</div>
-              </div>
+      <Section title="Action Plan" defaultOpen={true}>
+        {actions.length === 0 ? (
+          <EmptyNote>No action plan was produced for this run.</EmptyNote>
+        ) : (
+          actions.map((a, i) => (
+            <div key={i} className="actionGroup">
+              <div className="actionTimeframe">{a.timeframe}</div>
+              <ul className="actionList">
+                {list(a.items).map((item, j) => <li key={j}>{item}</li>)}
+              </ul>
             </div>
-          ))}
-        </div>
+          ))
+        )}
       </Section>
 
-      {/* Resume Tips */}
+      <Section title="Recommended Resources">
+        {resources.length === 0 ? (
+          <EmptyNote>No resources — nothing to close, since no skill gap was flagged.</EmptyNote>
+        ) : (
+          <div className="resourceGrid">
+            {resources.map((r, i) => (
+              <div key={i} className="resourceItem">
+                <span className="resourceType">
+                  {r.type === "course" ? "📚" : r.type === "cert" ? "🏆" : "🛠️"}
+                </span>
+                <div>
+                  <div className="resourceLabel">{r.type}</div>
+                  <div className="resourceName">{r.name}</div>
+                  {r.skill && <div className="resourceSkill">closes: {r.skill}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
       <Section title="Resume Tips">
-        <ul className="tipList">
-          {gap.resumeTips.map((tip, i) => <li key={i}>{tip}</li>)}
-        </ul>
+        {resumeTips.length === 0 ? (
+          <EmptyNote>No resume tips were produced for this run.</EmptyNote>
+        ) : (
+          <ul className="tipList">
+            {resumeTips.map((tip, i) => <li key={i}>{tip}</li>)}
+          </ul>
+        )}
       </Section>
 
-      {/* Your Profile (from resume analyzer) */}
       {resume && (
         <Section title="Your Profile Summary">
           <div className="profileMeta">
@@ -167,48 +203,105 @@ function ResultView({ data }) {
             <span className="profileBadge">{resume.yearsExperience} yrs exp</span>
             <span className="profileBadge">{resume.domain}</span>
           </div>
+
+          {resume.summary && <p className="profileSummary">{resume.summary}</p>}
+
+          <div className="tagSection">
+            <div className="tagLabel">Quantified Achievements</div>
+            {achievements.length === 0 ? (
+              <EmptyNote>
+                No measurable results found in the resume. Add numbers — impact, scale, latency,
+                revenue.
+              </EmptyNote>
+            ) : (
+              <ul className="achievementList">
+                {achievements.map((a, i) => (
+                  <li key={i}>
+                    {a.metric && <span className="metricChip">{a.metric}</span>}
+                    <span>{a.text}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className="tagSection">
             <div className="tagLabel">Skills</div>
-            <div className="tagCloud">
-              {resume.skills.map((s, i) => <span key={i} className="tag">{s}</span>)}
+            {list(resume.skills).length === 0 ? (
+              <EmptyNote>No skills were extracted from the resume.</EmptyNote>
+            ) : (
+              <div className="tagCloud">
+                {list(resume.skills).map((s, i) => <span key={i} className="tag">{s}</span>)}
+              </div>
+            )}
+          </div>
+
+          {list(resume.strengths).length > 0 && (
+            <div className="tagSection">
+              <div className="tagLabel">Strengths</div>
+              <ul className="tipList">
+                {list(resume.strengths).map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
             </div>
-          </div>
-          <div className="tagSection">
-            <div className="tagLabel">Strengths</div>
-            <ul className="tipList">{resume.strengths.map((s, i) => <li key={i}>{s}</li>)}</ul>
-          </div>
+          )}
         </Section>
       )}
 
-      {/* Market Snapshot */}
       {market && (
         <Section title="Market Snapshot">
           <div className="marketRow">
             <div className="marketStat">
               <div className="marketStatLabel">Experience</div>
-              <div className="marketStatValue">{market.experienceRange}</div>
+              <div className="marketStatValue">{market.experienceRange || "N/A"}</div>
             </div>
             <div className="marketStat">
               <div className="marketStatLabel">Salary Range</div>
-              <div className="marketStatValue">{market.salaryRange}</div>
+              <div className="marketStatValue">{market.salaryRange || "N/A"}</div>
             </div>
           </div>
+
+          <div className="marketSource">
+            {market.postingsAnalyzed
+              ? `Based on ${market.postingsAnalyzed} live posting${market.postingsAnalyzed === 1 ? "" : "s"} matched to your domain.`
+              : "No live posting matched this search, so the market figures below are limited."}
+          </div>
+
           <div className="tagSection">
             <div className="tagLabel">Top Required Skills</div>
-            <div className="tagCloud">
-              {market.topSkills.map((s, i) => <span key={i} className="tag tag--market">{s}</span>)}
-            </div>
+            {list(market.topSkills).length === 0 ? (
+              <EmptyNote>The sampled postings named no repeated skill.</EmptyNote>
+            ) : (
+              <div className="tagCloud">
+                {list(market.topSkills).map((s, i) => (
+                  <span key={i} className="tag tag--market">{s}</span>
+                ))}
+              </div>
+            )}
           </div>
+
           <div className="tagSection">
             <div className="tagLabel">Hiring Companies</div>
-            <div className="tagCloud">
-              {market.topCompanies.map((c, i) => <span key={i} className="tag tag--company">{c}</span>)}
+            {list(market.topCompanies).length === 0 ? (
+              <EmptyNote>
+                No employer is listed because none appeared in the postings we fetched.
+              </EmptyNote>
+            ) : (
+              <div className="tagCloud">
+                {list(market.topCompanies).map((c, i) => (
+                  <span key={i} className="tag tag--company">{c}</span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {list(market.keyTrends).length > 0 && (
+            <div className="tagSection">
+              <div className="tagLabel">Key Trends</div>
+              <ul className="tipList">
+                {list(market.keyTrends).map((t, i) => <li key={i}>{t}</li>)}
+              </ul>
             </div>
-          </div>
-          <div className="tagSection">
-            <div className="tagLabel">Key Trends</div>
-            <ul className="tipList">{market.keyTrends.map((t, i) => <li key={i}>{t}</li>)}</ul>
-          </div>
+          )}
         </Section>
       )}
     </div>
