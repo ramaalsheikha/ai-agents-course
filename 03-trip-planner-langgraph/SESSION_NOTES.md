@@ -1,6 +1,6 @@
 # Session Notes
 
-Single source of truth for `03-trip-planner-langgraph`. Newest session last; the live state of the system is **session 1 §5**, and the open work is **session 1 §6**.
+Single source of truth for `03-trip-planner-langgraph`. Newest session last; the live state of the system is **session 1 §5**, and the open work is **session 1 §8**.
 
 ---
 
@@ -120,15 +120,50 @@ please upgrade to Cloudflare's Workers Paid plan if you would like to continue u
 
 Two independent blockers, both external to the port:
 
-1. **MCP 401.** `mcp-search-server` has an `MCP_AUTH_TOKEN` secret and rejects any request without a matching bearer token — the Service Binding does not bypass that check. `trip-planner-api` has no such secret yet. Cloudflare does not expose existing secret values and the token is not stored in any local `.dev.vars` or `.env`, so it cannot be copied programmatically. The user is setting it directly with `wrangler secret put` so the value never passes through a transcript.
+1. **MCP 401.** `mcp-search-server` has an `MCP_AUTH_TOKEN` secret and rejects any request without a matching bearer token — the Service Binding does not bypass that check. `trip-planner-api` has no such secret yet. Cloudflare does not expose existing secret values and the token is not stored in any local `.dev.vars` or `.env`, so it cannot be copied programmatically. It has to be set directly with `wrangler secret put`, which also keeps the value out of any transcript. See §7 — the first attempt did not land.
 2. **Workers AI 4006.** Account-wide daily allocation, shared with `02-personal-assistant` and `05-career-assistant`, exhausted earlier today. Resets 00:00 UTC.
 
 **Neither the MCP round trip nor Workers AI inference has completed end-to-end on this project.** Everything else — routing, validation, CORS, SSE framing, error aggregation — is verified against the deployed worker.
 
-## 7. Next Steps
+## 7. Post-Deploy Follow-Up
 
-1. **Set `MCP_AUTH_TOKEN` on `trip-planner-api`**, then re-run the stream and confirm the 401 is gone. This is independent of the AI quota and testable immediately.
-2. **Re-run end-to-end after 00:00 UTC 2026-08-27**, once the neuron allocation resets, and confirm a `result` frame with a parsed itinerary object.
+Two things happened after §6 was written, both still inside session 1.
+
+### The `MCP_AUTH_TOKEN` attempt did not land
+
+The secret was set by hand, but afterwards:
+
+```
+$ npx wrangler secret list --name trip-planner-api
+[]
+```
+
+and the stream returned the identical 401. All four workers on the account were checked: no `MCP_AUTH_TOKEN` appeared anywhere new, and the existing ones on `mcp-search-server` and `personal-assistant-api` were intact. So nothing was overwritten and nothing was misdirected — the `put` simply never completed. Most likely cancelled at the hidden-value prompt, or run from a directory where wrangler resolved a different `wrangler.toml`.
+
+The retry has to run from `03-trip-planner-langgraph/worker`, because wrangler takes the target worker name from the nearest config rather than from the current project:
+
+```bash
+cd 03-trip-planner-langgraph/worker && npx wrangler secret put MCP_AUTH_TOKEN
+```
+
+Success prints `✨ Success! Uploaded secret MCP_AUTH_TOKEN`. No redeploy is needed afterwards — secrets apply to the running worker immediately.
+
+### The Service Binding is already proven
+
+Worth separating from the auth failure, because it is the part of the migration that was actually at risk. A 401 carrying `{"error":"Unauthorized"}` is `mcp-search-server`'s own handler replying — the request reached it, inside Cloudflare, over the binding. Had the binding been misconfigured the failure would have been a network or routing error instead.
+
+**So `[[services]] MCP` is verified. Only the bearer check is outstanding.** The remaining MCP unknowns are `tools/list` returning the expected two tools and `tools/call` returning real SerpAPI results.
+
+### Quota-reset run scheduled
+
+One-shot cron `2b13c8a4`, firing 03:07 local / 00:07 UTC on 2026-08-27, covering the deferred end-to-end tests for **both** this project and `05-career-assistant`. It checks whether `MCP_AUTH_TOKEN` exists before attempting 03's run and skips it if not, since the search agent cannot function without it.
+
+`05`'s earlier job `8e8d6af1` was gone by the time this session looked — `CronList` returned nothing — which is exactly the fragility that job's own notes flagged. **Cron jobs are session-only and in-memory.** If the session closes, the machine sleeps, or the REPL is mid-query at 00:07, `2b13c8a4` will not fire either and both tests must be triggered by hand.
+
+## 8. Next Steps
+
+1. **Set `MCP_AUTH_TOKEN` on `trip-planner-api`** — the first attempt failed (§7). Re-run the stream afterwards and confirm the 401 is gone. Independent of the AI quota, so testable immediately.
+2. **Re-run end-to-end after 00:00 UTC 2026-08-27**, once the neuron allocation resets, and confirm a `result` frame with a parsed itinerary object. Cron `2b13c8a4` is scheduled to do this, with the caveats in §7.
 3. **Confirm the itinerary JSON parses.** Same risk as `05-career-assistant`: the prompt demands one large strict-schema object and llama is less reliable than Sonnet at that. The `days` array must hold exactly the requested number of days. If it fails, tighten the prompt or pass a `response_format` json_schema to `AI.run` — do not loosen the client parser.
 4. **Watch the `gpt-oss` output shape in production.** `toText` handles both shapes, but which one Workers AI actually returns for `@cf/openai/gpt-oss-120b` has not been observed live. If it returns the `output` array, confirm the reasoning filter is doing its job and the itinerary prompt has no chain of thought in it.
 5. **Consider Workers Paid ($5/mo).** Three projects now share 10,000 neurons/day. Declined for `05` earlier today; the case gets stronger with each project added.

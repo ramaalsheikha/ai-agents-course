@@ -159,7 +159,9 @@ Session 1 §7 item 1 (re-run end-to-end inference) could not be done. The Worker
 
 **Workers AI inference still has not completed end-to-end on this project.** That is unchanged from session 1 §6 and remains the single largest unverified area.
 
-The one-shot cron job `8e8d6af1` from session 1 is still the intended trigger, with the same caveat: it is session-only and in-memory, so if the REPL is not alive at 00:06 UTC it will not fire and the test must be run by hand.
+Session 1's one-shot cron `8e8d6af1` **did not survive** — `CronList` returned nothing when this session checked, confirming the caveat session 1 §7 wrote about it. Cron jobs are session-only and in-memory, and that session had ended.
+
+It was replaced later in this session with one-shot cron `2b13c8a4`, firing 03:07 local / 00:07 UTC on 2026-08-27, which covers the deferred end-to-end tests for **both** this project and `03-trip-planner-langgraph` (migrated to Cloudflare in the same session). The caveat is unchanged and applies equally: if this session closes, the machine sleeps, or the REPL is mid-query at 00:07, it will not fire and both tests must be run by hand.
 
 ## 2. What Was Done
 
@@ -234,10 +236,10 @@ All of `05-career-assistant` is committed. Working tree clean except for anythin
 
 The worker was redeployed after `flattenGraphError` landed — version `4ab55cc0-b7c9-4106-9129-2eef1fed2975`, superseding session 1's `eda8e10e`. Post-deploy checks: `/api/health` 200 with ACAO echoed for the Pages origin, no ACAO for a foreign origin. Nothing in `client/` changed, so Pages was not redeployed and the URLs in session 1 §4 still stand.
 
-Workers Paid was declined; the project stays on the 10,000 neuron/day free tier.
+Workers Paid was declined; the project stays on the 10,000 neuron/day free tier. Note that `03-trip-planner-langgraph` was migrated to Workers AI later in this same session, so three projects now share that one daily allocation.
 
 ## 4. Next Steps
 
-1. **Re-run the end-to-end test after 00:00 UTC 2026-08-27.** Still the top item, still unverified. `POST /api/career/start` then `GET /api/career/stream` against `https://career-assistant-api.alsheikharama.workers.dev` and read the `result` frame.
+1. **Re-run the end-to-end test after 00:00 UTC 2026-08-27.** Still the top item, still unverified. `POST /api/career/start` then `GET /api/career/stream` against `https://career-assistant-api.alsheikharama.workers.dev` and read the `result` frame. Cron `2b13c8a4` is scheduled to do this, with the caveats in §1.
 2. **Confirm the three JSON payloads parse.** Same open risk as session 1 §7 item 2: llama-3.3-70b is less reliable than Sonnet at "respond ONLY with valid JSON" and the prompts were carried over unchanged. If parsing fails, tighten the prompts or pass a `response_format` json_schema to `AI.run` — do not loosen the client parser.
 3. **Consider a `response_format` json_schema on `AI.run`.** The tests prove the fence stripping handles what the model *might* wrap the JSON in, but they cannot prove llama will emit well-formed JSON in the first place; only item 1 can. A json_schema would make item 2 a non-issue rather than a tested-around risk.
