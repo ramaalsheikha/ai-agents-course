@@ -75,9 +75,10 @@ No KV namespace. One secret outstanding — see §7.
 | `workers/shared/{a2a,ai,cors,mcp}.js` | shared by all four services |
 | `workers/{search,budget,itinerary}-agent/src/index.js` | one `createAgentApp` each |
 | `workers/orchestrator/src/{index,orchestrate,a2a-client,prompts}.js` | SSE route, phases, JSON-RPC client, prompt builders |
-| `workers/tests/{agents,orchestrator}.test.js` | 21 tests, all passing |
-| `workers/*/wrangler.toml` | four configs; agents `workers_dev = false` |
+| `workers/tests/{agents,orchestrator}.test.js` | 22 tests, all passing |
+| `workers/*/wrangler.toml` | four configs; agents `workers_dev = false` and carry `AGENT_URL` (§8) |
 | `workers/.dev.vars.example` | holds the `MCP_AUTH_TOKEN` key |
+| `MCP_AUTH_TOKEN` on `a2a-search-agent` | set (§8); secret, never a var |
 | `client/src/App.jsx` | `API_URL` from `import.meta.env.VITE_API_URL`, fallback `http://localhost:8787` |
 | `client/.env.{development,production,example}` | localhost:8787 / orchestrator URL / placeholder |
 | `README.md` | rewritten around the two backends |
@@ -151,3 +152,12 @@ Agent versions after the fix: search `810c4c81`, budget `265ad3f2`, itinerary `b
 
 1. **Watch the `gpt-oss` output shape in production.** Carried from §7 item 4, still unobserved on any project — `toText` handles both shapes silently, so a live run cannot distinguish them without logging.
 2. **Consider whether the orchestrator should degrade instead of failing.** A search failure currently kills the run, even though the budget agent has already produced usable output. The A2A protocol has a task state model (`failed`, `input-required`) that this implementation reduces to completed-or-throw.
+
+## 10. Commits
+
+| Commit | Contents |
+|---|---|
+| `114ed32` | the four workers, shared modules, client repoint, README, these notes |
+| `26278ed` | the `AGENT_URL` card fix, its two tests, and the §8 verification record |
+
+Both are on `main` and unpushed. `03` and `05`'s changes from the same day are in `3d3ec83` and `a669ea1`.

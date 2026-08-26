@@ -321,6 +321,18 @@ One observation worth keeping: the market researcher reported `Found 0 jobs`. Se
 1. **Decide what an empty SerpAPI result should do.** Right now zero postings still produces confident `topSkills` and a `salaryRange`. Either fail the node loudly or mark the payload as unsourced so the client can say so. Nothing in the UI currently distinguishes real market data from invented market data.
 2. **Check whether `engine=google_jobs` is still returning results at all.** If SerpAPI has changed or the plan no longer covers that engine, the whole market lane is decorative.
 
+## 5b. File State Delta
+
+Session 2 §3's table stands except for these.
+
+| Path | Change |
+|---|---|
+| `worker/src/career-agent.js` | three schemas, `invokeModel` takes one, object payloads stringified, unconstrained retry |
+| `worker/src/career-agent.test.js` | 3 tests added, 24 passing |
+| Worker version | `f27fb782-5420-41c9-930e-3fd4601a6ef8` |
+
+Committed as `a669ea1`, on `main` and unpushed.
+
 ## 6. Post-Session Re-Verification
 
 The MCP bearer token was rotated across all four MCP-speaking workers in the account later the same day. This project does not speak MCP — its only external call is SerpAPI — so nothing here depended on it, but the full run was repeated afterwards to be sure: all three payloads parsed, `readinessScore: 60` again, no errors. §5's two items are unaffected and still open.

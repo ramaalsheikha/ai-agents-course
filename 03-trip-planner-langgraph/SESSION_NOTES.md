@@ -234,6 +234,18 @@ Note that the error frame now carries **one** cause rather than session 1's two.
 4. **Watch the `gpt-oss` output shape in production.** Still unobserved live. Carried from session 1 §8 item 4.
 5. ~~Consider Workers Paid.~~ Done — the account is on it as of this session.
 
+## 4b. File State Delta
+
+Only two files changed this session; session 1 §5's table stands otherwise.
+
+| Path | Change |
+|---|---|
+| `worker/src/trip-agent.js` | `SLOT_SCHEMA`, `itinerarySchema(days)`, `toStructured`, and the constrained-then-unconstrained call in `itineraryAgent` |
+| `worker/src/trip-agent.test.js` | 3 tests added, 25 passing |
+| `MCP_AUTH_TOKEN` on `trip-planner-api` | set by hand (§5), no longer empty |
+
+Committed as `3d3ec83`, on `main` and unpushed.
+
 ## 5. Resolved — Verified End to End
 
 The token was set by hand later in the same session, on all four workers that speak MCP (`mcp-search-server`, `personal-assistant-api`, `trip-planner-api`, `a2a-search-agent`), and `wrangler secret list --name trip-planner-api` now shows `MCP_AUTH_TOKEN`.
