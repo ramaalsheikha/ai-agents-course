@@ -151,7 +151,7 @@ SerpAPI was ruled out separately: a direct call with the deployed key returned H
 
 # Session 2 — 2026-08-26
 
-Scope: closing out the non-blocked items from session 1 §7 — the `cors.js` test port, the README, and the commit.
+Scope: closing out the non-blocked items from session 1 §7 — the `cors.js` test port, the README, and the commit — plus a graph test suite that turned up an error-reporting bug.
 
 ## 1. What Was Blocked
 
@@ -186,6 +186,30 @@ The old README described only the Express setup and told the reader to supply an
 
 Ports table keeps 3001 but adds 8787, since both backends are still runnable.
 
+### `worker/src/career-agent.test.js` added, and it found a real bug
+
+The graph is now tested with a stubbed `AI` binding and a stubbed `fetch`, so the whole three-node run is exercised without spending a single neuron. 12 tests. What they pin down:
+
+- All three payloads survive as parseable JSON when the model wraps them in ```` ```json ```` fences, in bare ``` fences, or in nothing at all. This is the session-1 §7 item 2 risk, tested from the worker side.
+- `AI.run` returning a plain string is handled as well as `{ response }`.
+- The fan-in actually feeds both branch outputs into the gap analyst's prompt.
+- `AI_MODEL` is honoured, the hardcoded default is used when it is unset, and the per-node temperatures are still 0 / 0 / 0.3.
+- `onProgress` emits `start` and `done` for all three agents.
+- SerpAPI is queried with `engine=google_jobs` and `q="<role> in <market>"`, a missing key and a non-2xx both throw, and an empty result set still runs the graph to completion.
+
+The quota test — both branch nodes throwing 4006 — failed, and not because the test was wrong:
+
+```
+expected [Function] to throw error including '4006'
+but got 'Multiple errors occurred during superstep 1. See the "errors" field of this exception for more details.'
+```
+
+When more than one node fails inside the same superstep, LangGraph aggregates them and puts the real causes in `err.errors`, leaving `err.message` as that placeholder. `index.js` sends `err.message` straight into the SSE `error` frame, so the user would have seen the placeholder instead of the actual reason.
+
+The production run earlier this session *did* show the real 4006 text, which is why session 1 never caught this: `marketResearcher` awaits SerpAPI before its model call, so `resumeAnalyzer` usually fails first and alone. Whether the user sees a real error message or a placeholder is a race.
+
+Fixed in `career-agent.js` with `flattenGraphError`: `graph.invoke` is wrapped, and an error carrying an `errors` array is rethrown with the nested messages joined and the original kept as `cause`. Single-node failures pass through untouched.
+
 ### Committed
 
 Everything from sessions 1 and 2 landed in one commit. `worker/.dev.vars` and `server/.env` are gitignored and were confirmed absent from the staged set before committing. `client/.env.development` and `client/.env.production` are **not** gitignored and are committed deliberately — they hold only a localhost URL and the public worker URL, no secrets.
@@ -196,8 +220,10 @@ All of `05-career-assistant` is committed. Working tree clean except for anythin
 
 | Path | State |
 |---|---|
-| `worker/src/{index,career-agent,cors}.js` | committed, deployed |
+| `worker/src/index.js`, `worker/src/cors.js` | committed, deployed |
+| `worker/src/career-agent.js` | committed, **has `flattenGraphError` not yet deployed** |
 | `worker/src/cors.test.js` | committed, 9 passing |
+| `worker/src/career-agent.test.js` | committed, 12 passing |
 | `worker/package.json` | committed, now has vitest + `npm test` |
 | `worker/wrangler.toml` | committed, real KV id and origins |
 | `worker/.dev.vars` | gitignored, local only |
@@ -206,11 +232,12 @@ All of `05-career-assistant` is committed. Working tree clean except for anythin
 | `README.md` | committed, rewritten |
 | `server/**` | unchanged since before session 1 |
 
-Deployed resources are unchanged from session 1 §4 — no new worker or Pages deploy was made this session, because nothing that ships to either was edited.
+Deployed resources are unchanged from session 1 §4. The worker was **not** redeployed after `flattenGraphError` landed, so the deployed version `eda8e10e` still leaks the `Multiple errors occurred during superstep 1` placeholder when both branches fail together. Nothing in `client/` changed, so Pages needs no redeploy.
 
 ## 4. Next Steps
 
 1. **Re-run the end-to-end test after 00:00 UTC 2026-08-27.** Still the top item, still unverified. `POST /api/career/start` then `GET /api/career/stream` against `https://career-assistant-api.alsheikharama.workers.dev` and read the `result` frame.
 2. **Confirm the three JSON payloads parse.** Same open risk as session 1 §7 item 2: llama-3.3-70b is less reliable than Sonnet at "respond ONLY with valid JSON" and the prompts were carried over unchanged. If parsing fails, tighten the prompts or pass a `response_format` json_schema to `AI.run` — do not loosen the client parser.
 3. **Consider Workers Paid ($5/mo).** 10,000 neurons/day is thin for a three-call graph sharing the account with `02-personal-assistant`.
-4. **Optional: test the graph itself.** `cors.js` is now covered but `career-agent.js` is not. 02 has `agent.test.js` as a model for stubbing the `AI` binding, which would let the JSON-parse risk in item 2 be tested without spending neurons.
+4. **Redeploy the worker** so `flattenGraphError` is live. `npm --prefix worker run deploy`. Low urgency — it only changes the error text — but it should go out before the next round of quota-limited testing, since that is exactly the case it improves.
+5. **Consider a `response_format` json_schema on `AI.run`.** The tests prove the fence stripping handles what the model *might* wrap the JSON in, but they cannot prove llama will emit well-formed JSON in the first place; only item 1 can. A json_schema would make item 2 a non-issue rather than a tested-around risk.

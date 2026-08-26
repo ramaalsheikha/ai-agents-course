@@ -155,6 +155,16 @@ Keep it concise. Max 6 skill gaps, 3 items per timeframe, 4 resources, 3 resume 
   return { gapAnalysis };
 }
 
+function flattenGraphError(err) {
+  const nested = Array.isArray(err?.errors) ? err.errors : [];
+  if (nested.length === 0) return err;
+
+  const message = nested.map((e) => e?.message || String(e)).join("; ");
+  const flattened = new Error(message);
+  flattened.cause = err;
+  return flattened;
+}
+
 function buildGraph(onProgress) {
   const graph = new StateGraph(CareerState)
     .addNode("resumeAnalyzer", wrapWithProgress("resume", resumeAnalyzerNode, onProgress))
@@ -174,15 +184,20 @@ export async function runCareerAssistant({ resume, targetMarket, targetRole, env
 
   const graph = buildGraph(onProgress);
 
-  const finalState = await graph.invoke({
-    resume,
-    targetMarket,
-    targetRole,
-    env,
-    resumeAnalysis: "",
-    marketResearch: "",
-    gapAnalysis: "",
-  });
+  let finalState;
+  try {
+    finalState = await graph.invoke({
+      resume,
+      targetMarket,
+      targetRole,
+      env,
+      resumeAnalysis: "",
+      marketResearch: "",
+      gapAnalysis: "",
+    });
+  } catch (err) {
+    throw flattenGraphError(err);
+  }
 
   return {
     resumeAnalysis: finalState.resumeAnalysis,
