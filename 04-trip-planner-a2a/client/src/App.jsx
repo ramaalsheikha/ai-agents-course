@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "./icons";
+import { LogPanel } from "./LogPanel";
+import { useActivityLog } from "./logs";
 import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
 
-const AGENT_ICONS = { search: "🔍", budget: "💰", itinerary: "🗺️" };
+const AGENT_ICONS = { search: "search", budget: "wallet", itinerary: "map" };
 
 function AgentCard({ name, status, card }) {
   const labels = { pending: "Pending", working: "Working...", completed: "Completed" };
 
   return (
     <div className={`agentCard agentCard--${status}`}>
-      <div className="agentIcon">{AGENT_ICONS[name]}</div>
+      <div className="agentIcon"><Icon name={AGENT_ICONS[name]} size={22} /></div>
       <div className="agentName">{name.charAt(0).toUpperCase() + name.slice(1)}</div>
       {card ? (
         <>
@@ -46,50 +49,12 @@ function PhaseBanner({ phase }) {
   );
 }
 
-const LOG_TYPE_COLORS = {
-  phase: "#60a5fa",
-  agent_discovered: "#34d399",
-  task_sent: "#fbbf24",
-  task_done: "#4ade80",
-  result: "#a78bfa",
-  error: "#f87171",
-};
-
-function ProtocolLog({ events }) {
-  const bottomRef = useRef(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events]);
-
-  return (
-    <div className="protocolLog">
-      <div className="protocolLogHeader">Protocol Log</div>
-      <div className="protocolLogBody">
-        {events.map((e, i) => (
-          <div key={i} className="protocolLogEntry">
-            <span className="protocolLogTime">{e.ts}</span>
-            <span
-              className="protocolLogType"
-              style={{ color: LOG_TYPE_COLORS[e.type] ?? "#e2e8f0" }}
-            >
-              [{e.type}]
-            </span>
-            <span className="protocolLogText">{e.text}</span>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-    </div>
-  );
-}
-
 function DayCard({ day }) {
   const [open, setOpen] = useState(false);
   const periods = [
-    { key: "morning", label: "Morning", icon: "🌅" },
-    { key: "afternoon", label: "Afternoon", icon: "☀️" },
-    { key: "evening", label: "Evening", icon: "🌙" },
+    { key: "morning", label: "Morning", icon: "sunrise" },
+    { key: "afternoon", label: "Afternoon", icon: "sun" },
+    { key: "evening", label: "Evening", icon: "moon" },
   ];
 
   return (
@@ -107,7 +72,7 @@ function DayCard({ day }) {
             return (
               <div key={key} className={`timeSlot timeSlot--${key}`}>
                 <div className="timeLabel">
-                  <span className="timeIcon">{icon}</span> {label}
+                  <Icon name={icon} size={14} className="timeIcon" /> {label}
                 </div>
                 <div className="timeActivity">{slot.activity}</div>
                 <div className="timeMeta">
@@ -125,11 +90,11 @@ function DayCard({ day }) {
 
 function BudgetChart({ budget }) {
   const categories = [
-    { key: "accommodation", label: "Accommodation", color: "#10a37f" },
-    { key: "food", label: "Food", color: "#38bdf8" },
-    { key: "transport", label: "Transport", color: "#a78bfa" },
-    { key: "activities", label: "Activities", color: "#fb923c" },
-    { key: "misc", label: "Misc", color: "#94a3b8" },
+    { key: "accommodation", label: "Accommodation", color: "#2563eb" },
+    { key: "food", label: "Food", color: "#0891b2" },
+    { key: "transport", label: "Transport", color: "#7c3aed" },
+    { key: "activities", label: "Activities", color: "#ea580c" },
+    { key: "misc", label: "Misc", color: "#64748b" },
   ];
 
   const total = budget.total || categories.reduce((s, c) => s + (budget[c.key] || 0), 0);
@@ -177,7 +142,10 @@ function TipsList({ title, icon, tips }) {
   return (
     <div className="tipsSection">
       <button className="tipsHeader" onClick={() => setOpen(!open)}>
-        <span>{icon} {title}</span>
+        <span className="tipsTitle">
+          <Icon name={icon} size={16} className="tipsIcon" />
+          {title}
+        </span>
         <span className="dayChevron">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
@@ -205,7 +173,7 @@ function ResultView({ data }) {
 
       {data.accommodation && (
         <div className="accomCard">
-          <div className="accomIcon">🏨</div>
+          <div className="accomIcon"><Icon name="building" size={26} /></div>
           <div className="accomInfo">
             <div className="accomName">{data.accommodation.name}</div>
             <div className="accomPrice">{data.accommodation.pricePerNight}/night</div>
@@ -228,31 +196,12 @@ function ResultView({ data }) {
       {data.budget && <BudgetChart budget={data.budget} />}
 
       <div className="tipsGroup">
-        <TipsList title="Transport Tips" icon="🚌" tips={data.transportTips} />
-        <TipsList title="Dining Tips" icon="🍜" tips={data.diningTips} />
-        <TipsList title="Travel Tips" icon="💡" tips={data.travelTips} />
+        <TipsList title="Transport Tips" icon="transit" tips={data.transportTips} />
+        <TipsList title="Dining Tips" icon="dining" tips={data.diningTips} />
+        <TipsList title="Travel Tips" icon="info" tips={data.travelTips} />
       </div>
     </div>
   );
-}
-
-function formatLogEntry(data) {
-  switch (data.type) {
-    case "phase":
-      return `Phase → ${data.phase}: ${data.message}`;
-    case "agent_discovered":
-      return `${data.agentName} agent card fetched from ${data.card?.url}`;
-    case "task_sent":
-      return `task ${data.taskId?.slice(0, 12)}… sent to ${data.agentName} agent`;
-    case "task_done":
-      return `task ${data.taskId?.slice(0, 12)}… completed by ${data.agentName} agent`;
-    case "result":
-      return "Itinerary received";
-    case "error":
-      return `Error: ${data.message}`;
-    default:
-      return JSON.stringify(data);
-  }
 }
 
 function App() {
@@ -272,7 +221,7 @@ function App() {
     itinerary: "pending",
   });
   const [phase, setPhase] = useState(null);
-  const [eventLog, setEventLog] = useState([]);
+  const { entries: logEntries, append: appendLog, clear: clearLog } = useActivityLog();
 
   const planningRef = useRef(false);
   const esRef = useRef(null);
@@ -282,11 +231,6 @@ function App() {
       if (esRef.current) esRef.current.close();
     };
   }, []);
-
-  const appendLog = (data) => {
-    const ts = new Date().toISOString().slice(11, 23);
-    setEventLog((prev) => [...prev, { ts, type: data.type, text: formatLogEntry(data) }]);
-  };
 
   const startPlanning = () => {
     if (!destination.trim() || planning) return;
@@ -298,7 +242,7 @@ function App() {
     setAgentCards({ search: null, budget: null, itinerary: null });
     setAgentStatuses({ search: "pending", budget: "pending", itinerary: "pending" });
     setPhase(null);
-    setEventLog([]);
+    clearLog();
 
     const params = new URLSearchParams({
       destination: destination.trim(),
@@ -312,9 +256,10 @@ function App() {
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      appendLog(data);
 
-      if (data.type === "phase") {
+      if (data.type === "log") {
+        appendLog(data);
+      } else if (data.type === "phase") {
         setPhase(data.phase);
       } else if (data.type === "agent_discovered") {
         setAgentCards((prev) => ({ ...prev, [data.agentName]: data.card }));
@@ -340,6 +285,11 @@ function App() {
     es.onerror = () => {
       if (planningRef.current) {
         setError("Connection lost. Please try again.");
+        appendLog({
+          component: "client",
+          message: "SSE connection lost before the itinerary arrived",
+          status: "error",
+        });
         setPlanning(false);
         planningRef.current = false;
       }
@@ -360,16 +310,16 @@ function App() {
     setAgentCards({ search: null, budget: null, itinerary: null });
     setAgentStatuses({ search: "pending", budget: "pending", itinerary: "pending" });
     setPhase(null);
-    setEventLog([]);
+    clearLog();
   };
 
-  const anyActive = planning || itinerary !== null || eventLog.length > 0;
+  const anyActive = planning || itinerary !== null || logEntries.length > 0;
 
   return (
     <div className="appShell">
       <header className="appHeader">
         <div className="appHeaderInner">
-          <div className="appTitle">A2A Trip Planner</div>
+          <div className="appTitle">Trip Planner — Multi-Agent</div>
           <div className="appSubtitle">Agent-to-Agent protocol — independent HTTP servers, JSON-RPC 2.0, runtime discovery</div>
         </div>
       </header>
@@ -454,7 +404,9 @@ function App() {
           </section>
         )}
 
-        {eventLog.length > 0 && <ProtocolLog events={eventLog} />}
+        {anyActive && (
+          <LogPanel title="Protocol Log" entries={logEntries} onClear={clearLog} />
+        )}
 
         {error && (
           <div className="errorBanner">

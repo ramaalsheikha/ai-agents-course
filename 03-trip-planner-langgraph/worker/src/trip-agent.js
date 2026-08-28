@@ -10,6 +10,19 @@ const SEARCH_MAX_TOKENS = 1024;
 const BUDGET_MAX_TOKENS = 768;
 const ITINERARY_MAX_TOKENS = 4096;
 
+const noop = () => {};
+
+const tokensOf = (value) => {
+  const usage = value?.usage ?? value?.response?.usage;
+  const total = usage?.total_tokens ?? usage?.totalTokens;
+  return Number.isFinite(total) ? total : null;
+};
+
+const describeTokens = (value) => {
+  const total = tokensOf(value);
+  return total === null ? "" : ` (${total} tokens)`;
+};
+
 const toText = (value) => {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(toText).filter(Boolean).join("");
@@ -144,12 +157,15 @@ const normalizeToolCalls = (output) =>
 const textModel = (env) => env.TEXT_MODEL || DEFAULT_TEXT_MODEL;
 const jsonModel = (env) => env.JSON_MODEL || DEFAULT_JSON_MODEL;
 
-const runTool = async (env, tools, call) => {
+const runTool = async (env, tools, call, log) => {
   const tool = tools.find((t) => t.name === call.name);
-  if (!tool) return `Unknown tool: ${call.name}`;
+  if (!tool) {
+    log("mcp", `Unknown tool requested: ${call.name}`, "error");
+    return `Unknown tool: ${call.name}`;
+  }
 
   try {
-    return await tool.handler(env, call.args);
+    return await tool.handler(env, call.args, log);
   } catch (error) {
     return `Tool "${call.name}" failed: ${error.message}`;
   }
@@ -159,9 +175,10 @@ const SEARCH_SYSTEM_PROMPT = `You are a travel research agent. Use the web_searc
 
 Report only what the tool returned. Never fill gaps from memory. Write a plain-text briefing covering attractions, hotels with nightly prices, and flight options with prices.`;
 
-async function searchAgent({ env, destination }) {
-  const tools = await loadMcpTools(env);
-  console.log(`[trip] Search agent MCP tools: ${tools.map((t) => t.name).join(", ")}`);
+async function searchAgent({ env, destination, log = noop }) {
+  log("search", `Searching for "${destination}"...`, "pending");
+
+  const tools = await loadMcpTools(env, log);
 
   const toolSchemas = tools.map((tool) => ({
     type: "function",
@@ -181,8 +198,11 @@ async function searchAgent({ env, destination }) {
   ];
 
   let output;
+  let searchCalls = 0;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    log("llm", `Generating with ${textModel(env)} (round ${round + 1})...`, "pending");
+
     output = await env.AI.run(textModel(env), {
       messages,
       tools: toolSchemas,
@@ -190,7 +210,16 @@ async function searchAgent({ env, destination }) {
     });
 
     const calls = normalizeToolCalls(output).slice(0, MAX_CALLS_PER_ROUND);
+
+    log(
+      "llm",
+      `Round ${round + 1} returned ${calls.length} tool call${calls.length === 1 ? "" : "s"}${describeTokens(output)}`,
+      "success",
+    );
+
     if (calls.length === 0) break;
+
+    searchCalls += calls.length;
 
     messages.push({
       role: "assistant",
@@ -203,7 +232,7 @@ async function searchAgent({ env, destination }) {
     });
 
     const results = await Promise.all(
-      calls.map(async (call) => ({ call, content: await runTool(env, tools, call) })),
+      calls.map(async (call) => ({ call, content: await runTool(env, tools, call, log) })),
     );
 
     for (const { call, content } of results) {
@@ -219,6 +248,8 @@ async function searchAgent({ env, destination }) {
   let searchResults = toText(output).trim();
 
   if (!searchResults) {
+    log("llm", "Empty draft, forcing a final briefing pass...", "pending");
+
     const synthesis = await env.AI.run(textModel(env), {
       messages: [
         ...messages,
@@ -234,11 +265,21 @@ async function searchAgent({ env, destination }) {
     searchResults = toText(synthesis).trim();
   }
 
-  console.log(`[trip] Search results obtained (${searchResults.length} chars)`);
+  log(
+    "search",
+    `Research briefing ready — ${searchCalls} search${searchCalls === 1 ? "" : "es"} run, ${searchResults.length} chars`,
+    "success",
+  );
   return searchResults;
 }
 
-async function budgetAgent({ env, destination, days, budget, people }) {
+async function budgetAgent({ env, destination, days, budget, people, log = noop }) {
+  log(
+    "budget",
+    `Calculating budget for ${days} days in ${destination} — $${budget} across ${people} traveler${people === 1 ? "" : "s"}...`,
+    "pending",
+  );
+
   const prompt = `You are a travel budget planning expert. Create a detailed budget breakdown for the following trip:
 
 Destination: ${destination}
@@ -262,11 +303,19 @@ Be specific with dollar amounts.`;
   });
 
   const budgetBreakdown = toText(response).trim();
-  console.log(`[trip] Budget breakdown obtained (${budgetBreakdown.length} chars)`);
+
+  log(
+    "budget",
+    `Breakdown ready — $${Math.round(budget / Math.max(days, 1))}/day, $${Math.round(budget / Math.max(people, 1))}/person${describeTokens(response)}`,
+    "success",
+  );
+
   return budgetBreakdown;
 }
 
-async function itineraryAgent({ env, destination, days, budget, people, searchResults, budgetBreakdown }) {
+async function itineraryAgent({ env, destination, days, budget, people, searchResults, budgetBreakdown, log = noop }) {
+  log("itinerary", `Generating itinerary for ${days} days...`, "pending");
+
   const prompt = `You are an expert travel itinerary planner. Create a detailed day-by-day itinerary based on the following information:
 
 **Trip Details:**
@@ -332,12 +381,19 @@ Budget values must be numbers (no $ sign). Include exactly ${days} days. Be spec
     });
   } catch (error) {
     console.error(`[trip] Structured output rejected, retrying unconstrained: ${error.message}`);
+    log("llm", `Structured output rejected, retrying unconstrained: ${error.message}`, "error");
     response = await runModel({});
   }
 
+  log("llm", `Itinerary model returned${describeTokens(response)}`, "success");
+
   const structured = toStructured(response);
   if (structured) {
-    console.log("[trip] Itinerary generated (structured: true, schema-enforced)");
+    log(
+      "itinerary",
+      `Itinerary ready (schema-enforced, ${structured.days?.length ?? days} days)`,
+      "success",
+    );
     return structured;
   }
 
@@ -348,41 +404,77 @@ Budget values must be numbers (no $ sign). Include exactly ${days} days. Be spec
 
   try {
     const itinerary = JSON.parse(cleaned);
-    console.log("[trip] Itinerary generated (structured: true)");
+    log("itinerary", `Itinerary ready (${itinerary.days?.length ?? days} days)`, "success");
     return itinerary;
   } catch {
     console.error("[trip] Failed to parse itinerary JSON, raw:", cleaned.slice(0, 200));
+    log("itinerary", "Model returned unparseable JSON, showing raw text", "error");
     return cleaned;
   }
 }
 
-export async function runTripPlanner({ destination, days, budget, people, env, onProgress }) {
-  console.log(
-    `[trip] Starting trip planner for: ${destination}, ${days} days, $${budget}, ${people} people`,
+export async function runTripPlanner({
+  destination,
+  days,
+  budget,
+  people,
+  env,
+  onProgress,
+  onLog,
+}) {
+  const log = onLog
+    ? (component, message, status = "info") => {
+        console.log(`[trip] [${component}] ${message}`);
+        onLog({ ts: Date.now(), component, message, status });
+      }
+    : noop;
+
+  log(
+    "workflow",
+    `Planning ${days} days in ${destination} for ${people} traveler${people === 1 ? "" : "s"} on a $${budget} budget`,
+    "info",
   );
 
   const track = async (agent, work) => {
+    const started = Date.now();
     onProgress({ agent, status: "start" });
-    const result = await work();
-    onProgress({ agent, status: "done" });
-    return result;
+    try {
+      return await work();
+    } finally {
+      onProgress({ agent, status: "done" });
+      log("workflow", `${agent} node finished in ${Date.now() - started}ms`, "info");
+    }
   };
 
+  log("workflow", "Fanning out search and budget nodes in parallel...", "info");
+
   const settled = await Promise.allSettled([
-    track("search", () => searchAgent({ env, destination })),
-    track("budget", () => budgetAgent({ env, destination, days, budget, people })),
+    track("search", () => searchAgent({ env, destination, log })),
+    track("budget", () => budgetAgent({ env, destination, days, budget, people, log })),
   ]);
 
   const failures = settled.filter((outcome) => outcome.status === "rejected");
   if (failures.length > 0) {
     const error = new Error(failures.map((f) => f.reason?.message || String(f.reason)).join("; "));
     error.cause = failures[0].reason;
+    log("workflow", `Parallel nodes failed: ${error.message}`, "error");
     throw error;
   }
 
   const [searchResults, budgetBreakdown] = settled.map((outcome) => outcome.value);
 
+  log("workflow", "Fanning in search and budget results into the itinerary node...", "info");
+
   return track("itinerary", () =>
-    itineraryAgent({ env, destination, days, budget, people, searchResults, budgetBreakdown }),
+    itineraryAgent({
+      env,
+      destination,
+      days,
+      budget,
+      people,
+      searchResults,
+      budgetBreakdown,
+      log,
+    }),
   );
 }

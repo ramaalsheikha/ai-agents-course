@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "./icons";
+import { LogPanel } from "./LogPanel";
+import { useActivityLog } from "./logs";
 import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
 
 function AgentCard({ name, status }) {
   const labels = { pending: "Pending", working: "Working...", done: "Done" };
-  const icons = { search: "🔍", budget: "💰", itinerary: "🗺️" };
+  const icons = { search: "search", budget: "wallet", itinerary: "map" };
 
   return (
     <div className={`agentCard agentCard--${status}`}>
-      <div className="agentIcon">{icons[name]}</div>
+      <div className="agentIcon"><Icon name={icons[name]} size={22} /></div>
       <div className="agentName">{name.charAt(0).toUpperCase() + name.slice(1)}</div>
       <div className={`agentStatus agentStatus--${status}`}>{labels[status]}</div>
     </div>
@@ -19,9 +22,9 @@ function AgentCard({ name, status }) {
 function DayCard({ day }) {
   const [open, setOpen] = useState(false);
   const periods = [
-    { key: "morning", label: "Morning", icon: "🌅" },
-    { key: "afternoon", label: "Afternoon", icon: "☀️" },
-    { key: "evening", label: "Evening", icon: "🌙" },
+    { key: "morning", label: "Morning", icon: "sunrise" },
+    { key: "afternoon", label: "Afternoon", icon: "sun" },
+    { key: "evening", label: "Evening", icon: "moon" },
   ];
 
   return (
@@ -39,7 +42,7 @@ function DayCard({ day }) {
             return (
               <div key={key} className={`timeSlot timeSlot--${key}`}>
                 <div className="timeLabel">
-                  <span className="timeIcon">{icon}</span> {label}
+                  <Icon name={icon} size={14} className="timeIcon" /> {label}
                 </div>
                 <div className="timeActivity">{slot.activity}</div>
                 <div className="timeMeta">
@@ -57,11 +60,11 @@ function DayCard({ day }) {
 
 function BudgetChart({ budget }) {
   const categories = [
-    { key: "accommodation", label: "Accommodation", color: "#10a37f" },
-    { key: "food", label: "Food", color: "#38bdf8" },
-    { key: "transport", label: "Transport", color: "#a78bfa" },
-    { key: "activities", label: "Activities", color: "#fb923c" },
-    { key: "misc", label: "Misc", color: "#94a3b8" },
+    { key: "accommodation", label: "Accommodation", color: "#2563eb" },
+    { key: "food", label: "Food", color: "#0891b2" },
+    { key: "transport", label: "Transport", color: "#7c3aed" },
+    { key: "activities", label: "Activities", color: "#ea580c" },
+    { key: "misc", label: "Misc", color: "#64748b" },
   ];
 
   const total = budget.total || categories.reduce((s, c) => s + (budget[c.key] || 0), 0);
@@ -109,7 +112,10 @@ function TipsList({ title, icon, tips }) {
   return (
     <div className="tipsSection">
       <button className="tipsHeader" onClick={() => setOpen(!open)}>
-        <span>{icon} {title}</span>
+        <span className="tipsTitle">
+          <Icon name={icon} size={16} className="tipsIcon" />
+          {title}
+        </span>
         <span className="dayChevron">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
@@ -139,7 +145,7 @@ function ResultView({ data }) {
       {/* Accommodation */}
       {data.accommodation && (
         <div className="accomCard">
-          <div className="accomIcon">🏨</div>
+          <div className="accomIcon"><Icon name="building" size={26} /></div>
           <div className="accomInfo">
             <div className="accomName">{data.accommodation.name}</div>
             <div className="accomPrice">{data.accommodation.pricePerNight}/night</div>
@@ -165,9 +171,9 @@ function ResultView({ data }) {
 
       {/* Tips */}
       <div className="tipsGroup">
-        <TipsList title="Transport Tips" icon="🚌" tips={data.transportTips} />
-        <TipsList title="Dining Tips" icon="🍜" tips={data.diningTips} />
-        <TipsList title="Travel Tips" icon="💡" tips={data.travelTips} />
+        <TipsList title="Transport Tips" icon="transit" tips={data.transportTips} />
+        <TipsList title="Dining Tips" icon="dining" tips={data.diningTips} />
+        <TipsList title="Travel Tips" icon="info" tips={data.travelTips} />
       </div>
     </div>
   );
@@ -186,6 +192,7 @@ function App() {
     budget: "pending",
     itinerary: "pending",
   });
+  const { entries: logEntries, append: appendLog, clear: clearLog } = useActivityLog();
 
   const planningRef = useRef(false);
   const esRef = useRef(null);
@@ -206,6 +213,7 @@ function App() {
     setItinerary(null);
     setError(null);
     setAgentStatuses({ search: "pending", budget: "pending", itinerary: "pending" });
+    clearLog();
 
     const params = new URLSearchParams({
       destination: destination.trim(),
@@ -220,7 +228,9 @@ function App() {
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
-      if (data.type === "agent_status") {
+      if (data.type === "log") {
+        appendLog(data);
+      } else if (data.type === "agent_status") {
         setAgentStatuses((prev) => ({
           ...prev,
           [data.agent]: data.status === "start" ? "working" : "done",
@@ -243,6 +253,11 @@ function App() {
     es.onerror = () => {
       if (planningRef.current) {
         setError("Connection lost. Please try again.");
+        appendLog({
+          component: "client",
+          message: "SSE connection lost before the itinerary arrived",
+          status: "error",
+        });
         setPlanning(false);
         planningRef.current = false;
       }
@@ -261,9 +276,10 @@ function App() {
     setItinerary(null);
     setError(null);
     setAgentStatuses({ search: "pending", budget: "pending", itinerary: "pending" });
+    clearLog();
   };
 
-  const anyActive = planning || itinerary !== null;
+  const anyActive = planning || itinerary !== null || logEntries.length > 0;
 
   return (
     <div className="appShell">
@@ -350,6 +366,10 @@ function App() {
               <AgentCard name="itinerary" status={agentStatuses.itinerary} />
             </div>
           </section>
+        )}
+
+        {anyActive && (
+          <LogPanel title="Workflow Log" entries={logEntries} onClear={clearLog} />
         )}
 
         {error && (

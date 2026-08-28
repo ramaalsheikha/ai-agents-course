@@ -10,6 +10,8 @@ import {
 const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_JOBS_ANALYZED = 8;
 
+const noop = () => {};
+
 const CareerState = Annotation.Root({
   resume: Annotation({ reducer: (_, v) => v }),
   targetMarket: Annotation({ reducer: (_, v) => v }),
@@ -162,23 +164,41 @@ async function invokeJson(env, { prompt, temperature, schema, label }) {
   return retryParsed;
 }
 
-function wrapWithProgress(name, nodeFn, onProgress) {
+function wrapWithProgress(name, nodeFn, onProgress, log) {
   return async (state) => {
+    const started = Date.now();
     onProgress({ agent: name, status: "start", detail: "" });
-    const result = await nodeFn(state, (detail) => {
-      onProgress({ agent: name, status: "working", detail });
-    });
-    onProgress({ agent: name, status: "done", detail: "" });
-    return result;
+
+    try {
+      const result = await nodeFn(
+        state,
+        (detail) => onProgress({ agent: name, status: "working", detail }),
+        log,
+      );
+
+      log("pipeline", `${name} node finished in ${Date.now() - started}ms`, "info");
+      return result;
+    } catch (error) {
+      log("pipeline", `${name} node failed: ${error.message}`, "error");
+      throw error;
+    } finally {
+      onProgress({ agent: name, status: "done", detail: "" });
+    }
   };
 }
 
-async function resumeAnalyzerNode(state, onDetail) {
+async function resumeAnalyzerNode(state, onDetail, log = noop) {
   const { resume, targetRole, env } = state;
 
   onDetail("Indexing resume...");
+  log("resume", `Analyzing resume (${resume.length} chars) for "${targetRole}"...`, "pending");
+
   const resumeIndex = await buildResumeIndex(env, resume);
-  console.log(`[career] Resume indexed: ${resumeIndex.chunks.length} chunks, ${resumeIndex.mode} retrieval`);
+  log(
+    "resume",
+    `Indexed ${resumeIndex.chunks.length} chunks using ${resumeIndex.mode} retrieval`,
+    "success",
+  );
 
   onDetail("Retrieving the passages that matter...");
   const context = await retrieveContext(
@@ -222,6 +242,9 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 Keep each array to 5-8 items max. Be specific.`;
 
   onDetail("Summarizing experience and impact...");
+  log("resume", `Retrieved ${context.length} chars of relevant passages`, "info");
+  log("llm", "Summarizing experience and impact...", "pending");
+
   const raw = await invokeJson(env, {
     prompt,
     temperature: 0,
@@ -230,8 +253,10 @@ Keep each array to 5-8 items max. Be specific.`;
   });
 
   const resumeAnalysis = normalizeResumeAnalysis(raw, { resume, targetRole });
-  console.log(
-    `[career] Resume analysis: ${resumeAnalysis.domain}, ${resumeAnalysis.skills.length} skills, ${resumeAnalysis.achievements.length} quantified achievements`,
+  log(
+    "resume",
+    `Profile built — ${resumeAnalysis.domain}, ${resumeAnalysis.skills.length} skills, ${resumeAnalysis.achievements.length} quantified achievements`,
+    "success",
   );
 
   return { resumeAnalysis, resumeIndex };
@@ -273,24 +298,29 @@ export function filterJobsByDomain(jobs, { targetRole, domain, skills = [] }) {
   return { jobs: jobs.slice(0, MAX_JOBS_ANALYZED), relaxed: true };
 }
 
-async function searchJobs(query, serpApiKey) {
+async function searchJobs(query, serpApiKey, log = noop) {
   const url = `https://serpapi.com/search.json?engine=google_jobs&q=${encodeURIComponent(query)}&api_key=${serpApiKey}`;
 
-  console.log(`[career] Fetching jobs: ${query}`);
+  log("api", `Calling SerpAPI google_jobs for "${query}"...`, "pending");
 
   const res = await fetch(url);
   if (!res.ok) {
+    log("api", `SerpAPI responded ${res.status} ${res.statusText}`, "error");
     throw new Error(`SerpAPI request failed: ${res.status} ${res.statusText}`);
   }
 
   const data = await res.json();
   if (data.error) {
-    console.log(`[career] SerpAPI returned no results for "${query}": ${data.error}`);
+    log("api", `SerpAPI returned no results for "${query}": ${data.error}`, "error");
   }
-  return data.google_jobs_results || data.jobs_results || [];
+
+  const results = data.google_jobs_results || data.jobs_results || [];
+  log("api", `SerpAPI responded ${res.status} with ${results.length} postings`, "success");
+
+  return results;
 }
 
-async function marketResearcherNode(state, onDetail) {
+async function marketResearcherNode(state, onDetail, log = noop) {
   const { targetMarket, targetRole, resumeAnalysis, env } = state;
   const serpApiKey = env.SERPAPI_API_KEY;
 
@@ -304,12 +334,14 @@ async function marketResearcherNode(state, onDetail) {
   const broadQuery = buildJobQuery({ targetRole, targetMarket, domain: "" });
 
   onDetail(`Searching ${domain || targetRole} jobs in ${targetMarket}...`);
+  log("market", `Searching market for "${targetRole}" in "${targetMarket}"...`, "pending");
 
-  let allJobs = await searchJobs(query, serpApiKey);
+  let allJobs = await searchJobs(query, serpApiKey, log);
 
   if (!allJobs.length && broadQuery !== query) {
     onDetail(`No ${domain} postings; widening to all ${targetRole} roles...`);
-    allJobs = await searchJobs(broadQuery, serpApiKey);
+    log("market", `No ${domain} postings; widening to all ${targetRole} roles...`, "info");
+    allJobs = await searchJobs(broadQuery, serpApiKey, log);
   }
 
   const { jobs, relaxed } = filterJobsByDomain(allJobs, {
@@ -319,10 +351,15 @@ async function marketResearcherNode(state, onDetail) {
   });
 
   if (relaxed && allJobs.length) {
-    console.log(`[career] No posting matched the ${domain || targetRole} filter; using the unfiltered top ${jobs.length}`);
+    log(
+      "market",
+      `No posting matched the ${domain || targetRole} filter; using the unfiltered top ${jobs.length}`,
+      "info",
+    );
   }
-  console.log(`[career] ${allJobs.length} postings fetched, ${jobs.length} kept after domain filtering`);
+
   onDetail(`Kept ${jobs.length} of ${allJobs.length} postings, analyzing...`);
+  log("market", `${allJobs.length} postings fetched, ${jobs.length} kept after filtering`, "success");
 
   const observedCompanies = jobs.map((job) => job.company_name).filter(Boolean);
 
@@ -358,6 +395,8 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 Keep arrays to 5-8 items max.`;
 
   onDetail("Extracting market insights...");
+  log("llm", `Extracting market insights from ${jobs.length} postings...`, "pending");
+
   const raw = await invokeJson(env, {
     prompt,
     temperature: 0,
@@ -370,16 +409,24 @@ Keep arrays to 5-8 items max.`;
     resumeSkills,
     postingsAnalyzed: jobs.length,
   });
-  console.log(
-    `[career] Market research: ${marketResearch.topSkills.length} skills, ${marketResearch.topCompanies.length} grounded companies`,
+  log(
+    "market",
+    `Market profile ready — ${marketResearch.topSkills.length} in-demand skills, ${marketResearch.topCompanies.length} grounded companies`,
+    "success",
   );
 
   return { marketResearch };
 }
 
-async function gapAnalystNode(state, onDetail) {
+async function gapAnalystNode(state, onDetail, log = noop) {
   const { targetRole, targetMarket, resumeAnalysis, marketResearch, resumeIndex, env } = state;
+
   onDetail("Checking each market skill against the resume...");
+  log(
+    "gap",
+    `Analyzing skill gaps across ${marketResearch.topSkills.length} market skills...`,
+    "pending",
+  );
 
   const evidence = marketResearch.topSkills.length
     ? await retrieveContext(
@@ -429,7 +476,11 @@ Respond ONLY with valid JSON (no markdown, no code fences):
 
 Keep it concise. Max 6 skill gaps, 3 items per timeframe, 4 resources, 3 resume tips.`;
 
+  log("gap", `Retrieved ${evidence.length} chars of supporting resume evidence`, "info");
+
   onDetail("Generating recommendations...");
+  log("resources", "Generating recommendations...", "pending");
+
   const raw = await invokeJson(env, {
     prompt,
     temperature: 0.3,
@@ -438,8 +489,16 @@ Keep it concise. Max 6 skill gaps, 3 items per timeframe, 4 resources, 3 resume 
   });
 
   const gapAnalysis = normalizeGapAnalysis(raw, { resumeAnalysis, marketResearch });
-  console.log(
-    `[career] Gap analysis: score ${gapAnalysis.readinessScore}, ${gapAnalysis.skillGaps.length} gaps, ${gapAnalysis.resources.length} linked resources`,
+
+  log(
+    "gap",
+    `Found ${gapAnalysis.skillGaps.length} gap${gapAnalysis.skillGaps.length === 1 ? "" : "s"} — readiness score ${gapAnalysis.readinessScore}`,
+    "success",
+  );
+  log(
+    "resources",
+    `Recommended ${gapAnalysis.resources.length} resource${gapAnalysis.resources.length === 1 ? "" : "s"} and ${gapAnalysis.resumeTips.length} resume tips`,
+    "success",
   );
 
   return { gapAnalysis };
@@ -455,11 +514,11 @@ function flattenGraphError(err) {
   return flattened;
 }
 
-function buildGraph(onProgress) {
+function buildGraph(onProgress, log) {
   const graph = new StateGraph(CareerState)
-    .addNode("resumeAnalyzer", wrapWithProgress("resume", resumeAnalyzerNode, onProgress))
-    .addNode("marketResearcher", wrapWithProgress("market", marketResearcherNode, onProgress))
-    .addNode("gapAnalyst", wrapWithProgress("gap", gapAnalystNode, onProgress))
+    .addNode("resumeAnalyzer", wrapWithProgress("resume", resumeAnalyzerNode, onProgress, log))
+    .addNode("marketResearcher", wrapWithProgress("market", marketResearcherNode, onProgress, log))
+    .addNode("gapAnalyst", wrapWithProgress("gap", gapAnalystNode, onProgress, log))
     .addEdge(START, "resumeAnalyzer")
     .addEdge("resumeAnalyzer", "marketResearcher")
     .addEdge("marketResearcher", "gapAnalyst")
@@ -468,10 +527,24 @@ function buildGraph(onProgress) {
   return graph.compile();
 }
 
-export async function runCareerAssistant({ resume, targetMarket, targetRole, env, onProgress }) {
-  console.log(`[career] Starting career assistant for: ${targetRole} in ${targetMarket}`);
+export async function runCareerAssistant({
+  resume,
+  targetMarket,
+  targetRole,
+  env,
+  onProgress,
+  onLog,
+}) {
+  const log = onLog
+    ? (component, message, status = "info") => {
+        console.log(`[career] [${component}] ${message}`);
+        onLog({ ts: Date.now(), component, message, status });
+      }
+    : noop;
 
-  const graph = buildGraph(onProgress);
+  log("pipeline", `Starting career analysis for "${targetRole}" in "${targetMarket}"`, "info");
+
+  const graph = buildGraph(onProgress, log);
 
   let finalState;
   try {

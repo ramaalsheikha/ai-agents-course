@@ -1,5 +1,5 @@
 import { createAgentApp } from "../../shared/a2a.js";
-import { jsonModel, toStructured, toText } from "../../shared/ai.js";
+import { describeTokens, jsonModel, toStructured, toText } from "../../shared/ai.js";
 
 const MAX_TOKENS = 4096;
 const DEFAULT_DAYS = 7;
@@ -105,7 +105,12 @@ const itinerarySchema = (days) => ({
   ],
 });
 
-const run = async ({ env, text }) => {
+const run = async ({ env, text, log }) => {
+  const days = dayCountOf(text);
+
+  log("agent", "Itinerary agent received task", "info");
+  log("synthesis", `Combining search and budget results into a ${days}-day itinerary...`, "pending");
+
   const runModel = (extra) =>
     env.AI.run(jsonModel(env), {
       messages: [{ role: "user", content: text }],
@@ -118,16 +123,23 @@ const run = async ({ env, text }) => {
 
   try {
     response = await runModel({
-      response_format: { type: "json_schema", json_schema: itinerarySchema(dayCountOf(text)) },
+      response_format: { type: "json_schema", json_schema: itinerarySchema(days) },
     });
   } catch (error) {
     console.error(`[itinerary-agent] Structured output rejected, retrying unconstrained: ${error.message}`);
+    log("llm", `Structured output rejected, retrying unconstrained: ${error.message}`, "error");
     response = await runModel({});
   }
 
+  log("llm", `Itinerary model returned${describeTokens(response)}`, "success");
+
   const structured = toStructured(response);
   if (structured) {
-    console.log("[itinerary-agent] Itinerary ready (schema-enforced)");
+    log(
+      "synthesis",
+      `Itinerary ready (schema-enforced, ${structured.days?.length ?? days} days)`,
+      "success",
+    );
     return JSON.stringify(structured);
   }
 
@@ -136,7 +148,7 @@ const run = async ({ env, text }) => {
     .replace(/```\n?/g, "")
     .trim();
 
-  console.log(`[itinerary-agent] Itinerary ready (${itinerary.length} chars)`);
+  log("synthesis", `Itinerary ready (${itinerary.length} chars, unstructured)`, "success");
   return itinerary;
 };
 

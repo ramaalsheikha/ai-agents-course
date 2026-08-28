@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createLogCollector } from "./logs.js";
 
 const INVALID_REQUEST = -32600;
 const INTERNAL_ERROR = -32603;
@@ -29,11 +30,12 @@ export const createAgentApp = ({ card, label, run }) => {
 
     const taskId = params?.id ?? `task-${crypto.randomUUID()}`;
     const text = textOf(params);
+    const { logs, log } = createLogCollector(label);
 
     console.log(`[${label}] Task ${taskId}: ${text.slice(0, 80)}`);
 
     try {
-      const result = await run({ env: c.env, text, taskId });
+      const result = await run({ env: c.env, text, taskId, log });
 
       return c.json({
         jsonrpc: "2.0",
@@ -41,13 +43,20 @@ export const createAgentApp = ({ card, label, run }) => {
           id: taskId,
           status: { state: "completed" },
           artifacts: [{ name: "result", parts: [{ type: "text", text: result }] }],
+          metadata: { logs },
         },
         id,
       });
     } catch (err) {
       console.error(`[${label}] Task ${taskId} failed:`, err);
+      log("agent", `Task failed: ${err.message}`, "error");
+
       return c.json(
-        { jsonrpc: "2.0", error: { code: INTERNAL_ERROR, message: err.message }, id },
+        {
+          jsonrpc: "2.0",
+          error: { code: INTERNAL_ERROR, message: err.message, data: { logs } },
+          id,
+        },
         500,
       );
     }

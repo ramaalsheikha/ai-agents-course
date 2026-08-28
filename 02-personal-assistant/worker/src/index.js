@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { streamSSE } from "hono/streaming";
 import { runAgent } from "./agent.js";
 import { ingestPdf } from "./ingest.js";
 import { isAllowedOrigin } from "./cors.js";
@@ -38,11 +39,7 @@ app.post("/api/chat", async (c) => {
     const answer = await runAgent({ env: c.env, message, sessionId, mode });
 
     if (!answer.output) {
-      return c.json({
-        answer:
-          "I apologize, but I couldn't generate a proper response. Could you please rephrase your question?",
-        mode: answer.mode,
-      });
+      return c.json({ answer: EMPTY_ANSWER, mode: answer.mode });
     }
 
     return c.json({ answer: answer.output, mode: answer.mode });
@@ -50,6 +47,55 @@ app.post("/api/chat", async (c) => {
     console.error("chat failed", error);
     return c.json({ error: error.message }, 500);
   }
+});
+
+const EMPTY_ANSWER =
+  "I apologize, but I couldn't generate a proper response. Could you please rephrase your question?";
+
+app.post("/api/chat/stream", async (c) => {
+  const { message, sessionId, mode = "rag" } = await c.req.json().catch(() => ({}));
+
+  if (!message) return c.json({ error: "Message required" }, 400);
+
+  c.header("Cache-Control", "no-cache");
+  c.header("X-Accel-Buffering", "no");
+
+  return streamSSE(c, async (stream) => {
+    let queue = Promise.resolve();
+
+    const send = (data) => {
+      queue = queue
+        .catch(() => {})
+        .then(() => stream.writeSSE({ data: JSON.stringify(data) }));
+      return queue;
+    };
+
+    try {
+      const answer = await runAgent({
+        env: c.env,
+        message,
+        sessionId,
+        mode,
+        onLog: (entry) => send({ type: "log", ...entry }),
+      });
+
+      await send({
+        type: "result",
+        answer: answer.output || EMPTY_ANSWER,
+        mode: answer.mode,
+      });
+    } catch (error) {
+      console.error("chat stream failed", error);
+      await send({
+        type: "log",
+        ts: Date.now(),
+        component: "agent",
+        message: `Request failed: ${error.message}`,
+        status: "error",
+      });
+      await send({ type: "error", message: error.message });
+    }
+  });
 });
 
 app.post("/api/ingest", async (c) => {

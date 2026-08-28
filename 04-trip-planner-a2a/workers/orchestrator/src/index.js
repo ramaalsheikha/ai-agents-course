@@ -43,7 +43,14 @@ app.get("/api/a2a/stream", async (c) => {
   c.header("X-Accel-Buffering", "no");
 
   return streamSSE(c, async (stream) => {
-    const send = (data) => stream.writeSSE({ data: JSON.stringify(data) });
+    let queue = Promise.resolve();
+
+    const send = (data) => {
+      queue = queue
+        .catch(() => {})
+        .then(() => stream.writeSSE({ data: JSON.stringify(data) }));
+      return queue;
+    };
 
     try {
       const itinerary = await runOrchestration({
@@ -58,6 +65,13 @@ app.get("/api/a2a/stream", async (c) => {
       await send({ type: "result", itinerary });
     } catch (err) {
       console.error("[orchestrator] Error:", err);
+      await send({
+        type: "log",
+        ts: Date.now(),
+        component: "orchestrator",
+        message: `Orchestration failed: ${err.message}`,
+        status: "error",
+      });
       await send({ type: "error", message: err.message });
     }
   });

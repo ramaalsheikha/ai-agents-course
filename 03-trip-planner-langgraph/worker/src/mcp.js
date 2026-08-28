@@ -1,5 +1,12 @@
 const PROTOCOL_VERSION = "2025-06-18";
 
+const summarizeArgs = (args) => {
+  const text = JSON.stringify(args ?? {});
+  return text.length > 160 ? `${text.slice(0, 157)}...` : text;
+};
+
+const noop = () => {};
+
 let toolCache = null;
 
 export const resetToolCache = () => {
@@ -38,34 +45,67 @@ const rpc = async (env, method, params) => {
   return payload.result;
 };
 
-const callTool = async (env, name, args) => {
-  const result = await rpc(env, "tools/call", { name, arguments: args });
+const callTool = async (env, name, args, log = noop) => {
+  log("mcp", `Calling tool: ${name} with ${summarizeArgs(args)}`, "pending");
 
-  const text = (result?.content ?? [])
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n");
+  const started = Date.now();
 
-  return text || "Tool returned no content.";
+  try {
+    const result = await rpc(env, "tools/call", { name, arguments: args });
+
+    const text = (result?.content ?? [])
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+
+    log(
+      "mcp",
+      `Tool ${name} returned ${text.length} chars in ${Date.now() - started}ms`,
+      "success",
+    );
+
+    return text || "Tool returned no content.";
+  } catch (error) {
+    log("mcp", `Tool ${name} failed: ${error.message}`, "error");
+    throw error;
+  }
 };
 
-export const loadMcpTools = async (env) => {
-  if (toolCache) return toolCache;
+export const loadMcpTools = async (env, log = noop) => {
+  if (toolCache) {
+    log("mcp", `Reusing ${toolCache.length} cached tools from MCP server`, "info");
+    return toolCache;
+  }
 
-  await rpc(env, "initialize", {
-    protocolVersion: PROTOCOL_VERSION,
-    capabilities: {},
-    clientInfo: { name: "trip-planner", version: "1.0.0" },
-  });
+  log("mcp", "Discovering tools from MCP server...", "pending");
 
-  const { tools = [] } = await rpc(env, "tools/list", {});
+  try {
+    await rpc(env, "initialize", {
+      protocolVersion: PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "trip-planner", version: "1.0.0" },
+    });
 
-  toolCache = tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.inputSchema,
-    handler: (runtimeEnv, args) => callTool(runtimeEnv, tool.name, args),
-  }));
+    const { tools = [] } = await rpc(env, "tools/list", {});
 
-  return toolCache;
+    toolCache = tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+      handler: (runtimeEnv, args, toolLog) => callTool(runtimeEnv, tool.name, args, toolLog),
+    }));
+
+    log(
+      "mcp",
+      `Discovered ${toolCache.length} tool${toolCache.length === 1 ? "" : "s"}: ${toolCache
+        .map((tool) => tool.name)
+        .join(", ")}`,
+      "success",
+    );
+
+    return toolCache;
+  } catch (error) {
+    log("mcp", `Tool discovery failed: ${error.message}`, "error");
+    throw error;
+  }
 };

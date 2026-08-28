@@ -102,7 +102,7 @@
   line-height: 1.5;
 }
 
-.formInput:focus, .formTextarea:focus { border-color: rgba(30, 48, 186, 0.5); }
+.formInput:focus, .formTextarea:focus { border-color: rgba(37, 99, 235, 0.5); }
 .formInput:disabled, .formTextarea:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .formActions {
@@ -114,8 +114,8 @@
 .analyzeButton {
   padding: 10px 22px;
   border-radius: 12px;
-  background: #1E30BA;
-  border: 1px solid rgba(30, 48, 186, 0.4);
+  background: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.4);
   color: white;
   font-size: 14px;
   font-weight: 600;
@@ -177,16 +177,18 @@
 }
 
 .agentCard--pending { background: rgba(16, 16, 20, 0.03); }
-.agentCard--working { background: rgba(30, 48, 186, 0.07); border-color: rgba(30, 48, 186, 0.3); }
-.agentCard--done { background: rgba(7, 220, 166, 0.07); border-color: rgba(7, 220, 166, 0.3); }
+.agentCard--working { background: rgba(37, 99, 235, 0.07); border-color: rgba(37, 99, 235, 0.3); }
+.agentCard--done { background: rgba(22, 163, 74, 0.07); border-color: rgba(22, 163, 74, 0.3); }
 
-.agentIcon { font-size: 22px; }
+.agentIcon { display: flex; justify-content: center; color: rgba(24, 24, 27, 0.45); }
+.agentCard--working .agentIcon { color: #2563eb; }
+.agentCard--done .agentIcon { color: #15803d; }
 .agentName { font-size: 14px; font-weight: 600; color: rgba(24, 24, 27, 0.9); }
 
 .agentStatus { font-size: 12px; font-weight: 500; }
 .agentStatus--pending { color: rgba(24, 24, 27, 0.5); }
 .agentStatus--working { color: #2563eb; animation: pulse 1.2s ease-in-out infinite; }
-.agentStatus--done { color: #0d9488; }
+.agentStatus--done { color: #15803d; }
 
 .agentDetail {
   font-size: 11px;
@@ -380,7 +382,7 @@
   border: 1px solid rgba(16, 16, 20, 0.05);
 }
 
-.resourceType { font-size: 20px; }
+.resourceType { display: flex; flex-shrink: 0; color: #2563eb; }
 
 .resourceLabel {
   font-size: 10px;
@@ -419,9 +421,9 @@
   font-weight: 600;
   padding: 4px 10px;
   border-radius: 8px;
-  background: rgba(30, 48, 186, 0.15);
+  background: rgba(37, 99, 235, 0.15);
   color: #2563eb;
-  border: 1px solid rgba(30, 48, 186, 0.25);
+  border: 1px solid rgba(37, 99, 235, 0.25);
   text-transform: capitalize;
 }
 
@@ -454,9 +456,9 @@
 }
 
 .tag--market {
-  background: rgba(7, 220, 166, 0.1);
-  color: #0d9488;
-  border-color: rgba(7, 220, 166, 0.2);
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+  border-color: rgba(22, 163, 74, 0.2);
 }
 
 .tag--company {
@@ -549,9 +551,9 @@
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 6px;
-  background: rgba(7, 220, 166, 0.14);
-  color: #0d9488;
-  border: 1px solid rgba(7, 220, 166, 0.28);
+  background: rgba(22, 163, 74, 0.14);
+  color: #15803d;
+  border: 1px solid rgba(22, 163, 74, 0.28);
 }
 
 .resourceSkill {
@@ -564,4 +566,197 @@
   font-size: 12px;
   color: rgba(24, 24, 27, 0.55);
   margin-bottom: 12px;
+}
+
+/* ── Activity log panel ───────────────────────────────────── */
+
+.logPanel {
+  background: #ececef;
+  border: 1px solid rgba(16, 16, 20, 0.1);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.logPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px 6px 4px;
+  border-bottom: 1px solid rgba(16, 16, 20, 0.06);
+}
+
+.logPanelToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(24, 24, 27, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.logPanelToggle:hover {
+  background: rgba(16, 16, 20, 0.04);
+  border-color: transparent;
+  color: rgba(24, 24, 27, 0.82);
+}
+
+.logPanelToggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.logPanelChevron {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.logPanelTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logPanelCount {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(16, 16, 20, 0.08);
+  color: rgba(24, 24, 27, 0.6);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.logPanelActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.logPanelButton {
+  padding: 5px 11px;
+  border: 1px solid rgba(16, 16, 20, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  color: rgba(24, 24, 27, 0.75);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.logPanelButton:hover:not(:disabled) {
+  border-color: rgba(37, 99, 235, 0.45);
+  color: #1d4ed8;
+}
+
+.logPanelButton:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.logPanelButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.logPanelBody {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+  font-size: 12px;
+  padding: 8px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.logPanelEmpty {
+  padding: 8px 16px;
+  color: rgba(24, 24, 27, 0.45);
+}
+
+.logEntry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 16px;
+  line-height: 1.5;
+}
+
+.logEntry:hover {
+  background: rgba(16, 16, 20, 0.03);
+}
+
+.logEntryDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: center;
+  background: currentColor;
+}
+
+.logEntryTime {
+  color: rgba(24, 24, 27, 0.4);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.logEntryComponent {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.logEntryMessage {
+  color: rgba(24, 24, 27, 0.75);
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.logEntryStatus {
+  flex-shrink: 0;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.logEntry--info {
+  color: #2563eb;
+}
+
+.logEntry--success {
+  color: #15803d;
+}
+
+.logEntry--pending {
+  color: #b45309;
+}
+
+.logEntry--error {
+  color: #dc2626;
+}
+
+.logEntry--error .logEntryMessage {
+  color: #b91c1c;
+}
+
+@media (max-width: 560px) {
+  .logEntry {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .logEntryStatus {
+    display: none;
+  }
 }

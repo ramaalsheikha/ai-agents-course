@@ -1,6 +1,6 @@
 import { createAgentApp } from "../../shared/a2a.js";
 import { loadMcpTools } from "../../shared/mcp.js";
-import { textModel, toText } from "../../shared/ai.js";
+import { describeTokens, textModel, toText } from "../../shared/ai.js";
 
 const MAX_TOOL_ROUNDS = 3;
 const MAX_CALLS_PER_ROUND = 2;
@@ -49,20 +49,24 @@ const normalizeToolCalls = (output) =>
     }))
     .filter((call) => Boolean(call.name));
 
-const runTool = async (env, tools, call) => {
+const runTool = async (env, tools, call, log) => {
   const tool = tools.find((t) => t.name === call.name);
-  if (!tool) return `Unknown tool: ${call.name}`;
+  if (!tool) {
+    log("mcp", `Unknown tool requested: ${call.name}`, "error");
+    return `Unknown tool: ${call.name}`;
+  }
 
   try {
-    return await tool.handler(env, call.args);
+    return await tool.handler(env, call.args, log);
   } catch (error) {
     return `Tool "${call.name}" failed: ${error.message}`;
   }
 };
 
-const run = async ({ env, text }) => {
-  const tools = await loadMcpTools(env);
-  console.log(`[search-agent] MCP tools: ${tools.map((t) => t.name).join(", ")}`);
+const run = async ({ env, text, log }) => {
+  log("agent", "Search agent received task", "info");
+
+  const tools = await loadMcpTools(env, log);
 
   const toolSchemas = tools.map((tool) => ({
     type: "function",
@@ -79,8 +83,11 @@ const run = async ({ env, text }) => {
   ];
 
   let output;
+  let searchCalls = 0;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    log("llm", `Generating with ${textModel(env)} (round ${round + 1})...`, "pending");
+
     output = await env.AI.run(textModel(env), {
       messages,
       tools: toolSchemas,
@@ -88,7 +95,16 @@ const run = async ({ env, text }) => {
     });
 
     const calls = normalizeToolCalls(output).slice(0, MAX_CALLS_PER_ROUND);
+
+    log(
+      "llm",
+      `Round ${round + 1} returned ${calls.length} tool call${calls.length === 1 ? "" : "s"}${describeTokens(output)}`,
+      "success",
+    );
+
     if (calls.length === 0) break;
+
+    searchCalls += calls.length;
 
     messages.push({
       role: "assistant",
@@ -101,7 +117,7 @@ const run = async ({ env, text }) => {
     });
 
     const results = await Promise.all(
-      calls.map(async (call) => ({ call, content: await runTool(env, tools, call) })),
+      calls.map(async (call) => ({ call, content: await runTool(env, tools, call, log) })),
     );
 
     for (const { call, content } of results) {
@@ -117,6 +133,8 @@ const run = async ({ env, text }) => {
   let briefing = toText(output).trim();
 
   if (!briefing) {
+    log("llm", "Empty draft, forcing a final briefing pass...", "pending");
+
     const synthesis = await env.AI.run(textModel(env), {
       messages: [
         ...messages,
@@ -132,7 +150,11 @@ const run = async ({ env, text }) => {
     briefing = toText(synthesis).trim();
   }
 
-  console.log(`[search-agent] Briefing ready (${briefing.length} chars)`);
+  log(
+    "agent",
+    `Briefing ready — ${searchCalls} search${searchCalls === 1 ? "" : "es"} run, ${briefing.length} chars`,
+    "success",
+  );
   return briefing;
 };
 

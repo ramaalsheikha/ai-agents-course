@@ -143,7 +143,7 @@ describe("rag retrieval", () => {
 
     const result = await runAgent({ env, message: "What is Atlas?", mode: "rag" });
 
-    expect(searchHandler).toHaveBeenCalledWith(env, { query: "What is Atlas?" });
+    expect(searchHandler).toHaveBeenCalledWith(env, { query: "What is Atlas?" }, expect.any(Function));
     expect(result.output).toBe("Atlas is a multi-platform app [Atlas.pdf].");
   });
 
@@ -252,6 +252,111 @@ describe("rag retrieval", () => {
     await runAgent({ env, message: "Is it on Android?", sessionId: "s3", mode: "rag" });
 
     expect(messagesOf(env, 0).map((m) => m.content)).toContain("A multi-platform app.");
+  });
+});
+
+describe("tool result truncation", () => {
+  it("cuts at a result boundary so image markdown stays intact", async () => {
+    const image = (n) => `![Image ${n}](https://example.com/${"x".repeat(600)}-${n}.jpg)`;
+    webHandler.mockResolvedValue([1, 2, 3, 4, 5].map(image).join("\n\n---\n\n"));
+
+    const env = makeEnv([toolCall("web_search", { query: "kittens" }), text("Here they are.")]);
+
+    await runAgent({ env, message: "find me pictures of kittens", mode: "api" });
+
+    const passed = lastToolMessage(env, 1).content;
+
+    expect(passed.length).toBeLessThanOrEqual(2500);
+    expect(passed).toContain(image(1));
+    expect(passed.endsWith(".jpg)")).toBe(true);
+    expect(passed).not.toMatch(/!\[[^\]]*\]\([^)]*$/);
+  });
+});
+
+describe("tool calls emitted as text", () => {
+  it("runs a tool the model wrote into its reply as JSON", async () => {
+    webHandler.mockResolvedValue("Sunny, 25C in Amman.");
+
+    const env = makeEnv([
+      text('{"type":"function","name":"web_search","parameters":{"query":"weather in Amman"}}'),
+      text("It is sunny and 25C in Amman."),
+    ]);
+
+    const result = await runAgent({ env, message: "what is the weather in Amman?", mode: "api" });
+
+    expect(webHandler).toHaveBeenCalledWith(env, { query: "weather in Amman" }, expect.any(Function));
+    expect(result.output).toBe("It is sunny and 25C in Amman.");
+    expect(result.output).not.toContain("web_search");
+  });
+
+  it("accepts the arguments key and a tool_call wrapper", async () => {
+    webHandler.mockResolvedValue("Result");
+
+    const env = makeEnv([
+      text(
+        'Let me look that up.\n<tool_call>{"name":"web_search","arguments":{"query":"kittens"}}</tool_call>',
+      ),
+      text("Here is what I found."),
+    ]);
+
+    await runAgent({ env, message: "find me pictures of kittens", mode: "api" });
+
+    expect(webHandler).toHaveBeenCalledWith(env, { query: "kittens" }, expect.any(Function));
+
+    const assistantMessage = messagesOf(env, 1).find((m) => m.role === "assistant");
+    expect(assistantMessage.content).toBe("Let me look that up.");
+    expect(assistantMessage.content).not.toContain("web_search");
+  });
+
+  it("never leaks a tool call into the final answer", async () => {
+    webHandler.mockResolvedValue("Result");
+
+    const call = text('{"type":"function","name":"web_search","parameters":{"query":"kittens"}}');
+    const env = makeEnv([call, call, call, text("Here are the results.")]);
+
+    const result = await runAgent({ env, message: "find me pictures of kittens", mode: "api" });
+
+    expect(result.output).toBe("Here are the results.");
+    expect(env.AI.run.mock.calls.at(-1)[1].tools).toBeUndefined();
+  });
+
+  it("parses a call whose arguments use an invalid escape", async () => {
+    webHandler.mockResolvedValue("Result");
+
+    const env = makeEnv([
+      text(`{"type": "function", "name": "web_search", "parameters": {"query": "Baha\\'a Abdul-Rahman"}}`),
+      text("Here is what I found."),
+    ]);
+
+    const result = await runAgent({ env, message: "search for Baha'a Abdul-Rahman", mode: "api" });
+
+    expect(webHandler).toHaveBeenCalledWith(env, { query: "Baha'a Abdul-Rahman" }, expect.any(Function));
+    expect(result.output).toBe("Here is what I found.");
+  });
+
+  it("does not strip JSON that names no known tool", async () => {
+    const env = makeEnv([text('A config looks like {"name":"other_thing","parameters":{"a":1}}.')]);
+
+    const result = await runAgent({ env, message: "show me an example config object", mode: "api" });
+
+    expect(result.output).toContain('"name":"other_thing"');
+    expect(webHandler).not.toHaveBeenCalled();
+  });
+
+  it("does not double-run a call returned both structured and as text", async () => {
+    webHandler.mockResolvedValue("Result");
+
+    const env = makeEnv([
+      {
+        response: '{"type":"function","name":"web_search","parameters":{"query":"kittens"}}',
+        tool_calls: [{ id: "call_1", name: "web_search", arguments: '{"query":"kittens"}' }],
+      },
+      text("Here are the results."),
+    ]);
+
+    await runAgent({ env, message: "find me pictures of kittens", mode: "api" });
+
+    expect(webHandler).toHaveBeenCalledTimes(1);
   });
 });
 

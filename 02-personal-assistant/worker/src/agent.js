@@ -17,6 +17,8 @@ const CONTEXT_BACKOFF = 0.6;
 const SMALL_TALK_MAX_TOKENS = 160;
 const SMALL_TALK_HISTORY_MESSAGES = 4;
 
+const noop = () => {};
+
 const estimateTokens = (value) => Math.ceil(JSON.stringify(value ?? "").length / 3.5);
 
 const totalTokens = (messages) =>
@@ -84,21 +86,133 @@ const parseArgs = (raw) => {
   }
 };
 
-const normalizeToolCalls = (output) => {
-  const calls = output?.tool_calls ?? [];
+const TOOL_CALL_RESIDUE = /<\/?tool_call>|<\/?function_call>|<\/?function>|```(?:json|tool_code)?/gi;
 
-  return calls
+const objectSpans = (text) => {
+  const spans = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{") {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (char === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0) spans.push({ start, end: i + 1, body: text.slice(start, i + 1) });
+    }
+  }
+
+  return spans;
+};
+
+const INVALID_ESCAPE = /\\(?!["\\/bfnrtu])/g;
+
+const parseLoose = (body) => {
+  try {
+    return JSON.parse(body);
+  } catch {
+    try {
+      return JSON.parse(body.replace(INVALID_ESCAPE, ""));
+    } catch {
+      return undefined;
+    }
+  }
+};
+
+const asToolCall = (value, id) => {
+  if (!value || typeof value !== "object") return null;
+
+  const name = value.name ?? value.function?.name ?? value.tool_name ?? value.tool;
+  if (typeof name !== "string") return null;
+
+  const rawArgs =
+    value.parameters ?? value.arguments ?? value.args ?? value.input ?? value.function?.arguments;
+  if (rawArgs === undefined && value.type !== "function") return null;
+
+  return { id, name, args: parseArgs(rawArgs) };
+};
+
+const extractTextToolCalls = (raw, knownNames) => {
+  const text = String(raw ?? "");
+  const calls = [];
+  let cleaned = "";
+  let cursor = 0;
+
+  objectSpans(text).forEach((span, index) => {
+    const parsed = parseLoose(span.body);
+    if (parsed === undefined) return;
+
+    const call = asToolCall(parsed, `text_call_${index}`);
+    if (!call || !knownNames.has(call.name)) return;
+
+    calls.push(call);
+    cleaned += text.slice(cursor, span.start);
+    cursor = span.end;
+  });
+
+  cleaned += text.slice(cursor);
+
+  if (calls.length > 0) cleaned = cleaned.replace(TOOL_CALL_RESIDUE, "");
+
+  return { calls, text: cleaned.trim() };
+};
+
+const dedupeCalls = (calls) => {
+  const seen = new Set();
+
+  return calls.filter((call) => {
+    const key = `${call.name}:${JSON.stringify(call.args)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const normalizeToolCalls = (output, knownNames) => {
+  const structured = (output?.tool_calls ?? [])
     .map((call, index) => ({
       id: call.id ?? `call_${index}`,
       name: call.name ?? call.function?.name,
       args: parseArgs(call.arguments ?? call.function?.arguments),
     }))
     .filter((call) => Boolean(call.name));
+
+  const fromText = extractTextToolCalls(toText(output?.response), knownNames);
+
+  return {
+    calls: dedupeCalls([...structured, ...fromText.calls]),
+    text: fromText.text,
+  };
 };
 
 const isContextLengthError = (error) => {
   const text = String(error?.message ?? error ?? "");
   return text.includes("8007") || /maximum context length/i.test(text);
+};
+
+const tokensOf = (value) => {
+  const usage = value?.usage ?? value?.response?.usage;
+  const total = usage?.total_tokens ?? usage?.totalTokens;
+  return Number.isFinite(total) ? total : null;
+};
+
+const describeTokens = (value, messages) => {
+  const total = tokensOf(value);
+  return total === null ? ` (~${totalTokens(messages)} prompt tokens)` : ` (${total} tokens)`;
 };
 
 const runModel = async (env, model, { messages, tools, maxTokens }) => {
@@ -124,13 +238,31 @@ const runModel = async (env, model, { messages, tools, maxTokens }) => {
   throw lastError;
 };
 
-const runTool = async (env, tools, call) => {
+const RESULT_SEPARATOR = "\n\n---\n\n";
+
+const clampToolResult = (value) => {
+  const text = String(value);
+  if (text.length <= MAX_TOOL_RESULT_CHARS) return text;
+
+  const head = text.slice(0, MAX_TOOL_RESULT_CHARS);
+  const boundary = head.lastIndexOf(RESULT_SEPARATOR);
+  if (boundary > 0) return head.slice(0, boundary);
+
+  const lineBreak = head.lastIndexOf("\n");
+  return lineBreak > 0 ? head.slice(0, lineBreak) : head;
+};
+
+const runTool = async (env, tools, call, log) => {
   const tool = tools.find((t) => t.name === call.name);
-  if (!tool) return `Unknown tool: ${call.name}`;
+  if (!tool) {
+    log("agent", `Unknown tool requested: ${call.name}`, "error");
+    return `Unknown tool: ${call.name}`;
+  }
 
   try {
-    return await tool.handler(env, call.args);
+    return await tool.handler(env, call.args, log);
   } catch (error) {
+    log("agent", `Tool "${call.name}" failed: ${error.message}`, "error");
     return `Tool "${call.name}" failed: ${error.message}`;
   }
 };
@@ -148,16 +280,37 @@ const answerSmallTalk = async ({ env, model, message, history }) => {
   return toText(reply?.response).trim();
 };
 
-export const runAgent = async ({ env, message, sessionId = "default", mode = "rag" }) => {
+export const runAgent = async ({
+  env,
+  message,
+  sessionId = "default",
+  mode = "rag",
+  onLog,
+}) => {
   if (mode !== "mcp" && !TOOLS_BY_MODE[mode]) throw new Error(`Unknown or unavailable mode: ${mode}`);
 
+  const log = onLog
+    ? (component, text, status = "info") => {
+        console.log(`[assistant] [${component}] ${text}`);
+        onLog({ ts: Date.now(), component, message: text, status });
+      }
+    : noop;
+
   const model = env.AI_MODEL || DEFAULT_MODEL;
+
+  log("agent", `Handling message in ${mode.toUpperCase()} mode`, "info");
+
   const history = await loadHistory(env, sessionId, mode);
+  log("memory", `Loaded ${history.length} prior message${history.length === 1 ? "" : "s"}`, "info");
 
   if (isSmallTalk(message)) {
+    log("llm", "Small talk detected, answering without tools...", "pending");
+
     const smallTalkAnswer =
       (await answerSmallTalk({ env, model, message, history })) ||
       "Hello! How can I help you today?";
+
+    log("llm", `Reply generated (${smallTalkAnswer.length} chars)`, "success");
 
     await saveHistory(env, sessionId, mode, [
       ...history,
@@ -168,8 +321,12 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
     return { output: smallTalkAnswer, mode };
   }
 
-  const tools = mode === "mcp" ? await loadMcpTools(env) : TOOLS_BY_MODE[mode];
+  const tools = mode === "mcp" ? await loadMcpTools(env, log) : TOOLS_BY_MODE[mode];
   if (!tools || tools.length === 0) throw new Error(`Unknown or unavailable mode: ${mode}`);
+
+  if (mode !== "mcp") {
+    log("agent", `Loaded ${tools.length} local tools: ${tools.map((t) => t.name).join(", ")}`, "info");
+  }
 
   const messages = [
     { role: "system", content: buildSystemPrompt(mode) },
@@ -186,22 +343,36 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
     },
   }));
 
-  let output;
+  const toolNames = new Set(tools.map((tool) => tool.name));
+
+  let answerText = "";
   let usedTools = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    output = await runModel(env, model, {
+    log("llm", `Generating response with ${model} (round ${round + 1})...`, "pending");
+
+    const output = await runModel(env, model, {
       messages: usedTools ? withLanguageDirective(messages, message) : messages,
       tools: toolSchemas,
       maxTokens: MAX_TOKENS,
     });
 
-    const calls = normalizeToolCalls(output).slice(0, MAX_CALLS_PER_ROUND);
+    const parsed = normalizeToolCalls(output, toolNames);
+    answerText = parsed.text;
+
+    const calls = parsed.calls.slice(0, MAX_CALLS_PER_ROUND);
+
+    log(
+      "llm",
+      `Round ${round + 1} returned ${calls.length} tool call${calls.length === 1 ? "" : "s"}${describeTokens(output, messages)}`,
+      "success",
+    );
+
     if (calls.length === 0) break;
 
     messages.push({
       role: "assistant",
-      content: toText(output.response),
+      content: answerText,
       tool_calls: calls.map((call) => ({
         id: call.id,
         type: "function",
@@ -212,7 +383,7 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
     usedTools = true;
 
     const results = await Promise.all(
-      calls.map(async (call) => ({ call, content: await runTool(env, tools, call) })),
+      calls.map(async (call) => ({ call, content: await runTool(env, tools, call, log) })),
     );
 
     for (const { call, content } of results) {
@@ -220,14 +391,16 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
         role: "tool",
         tool_call_id: call.id,
         name: call.name,
-        content: String(content).slice(0, MAX_TOOL_RESULT_CHARS),
+        content: clampToolResult(content),
       });
     }
   }
 
-  let answer = toText(output?.response).trim();
+  let answer = answerText.trim();
 
   if (!answer) {
+    log("llm", "Empty draft, forcing a final answer pass...", "pending");
+
     const synthesis = await runModel(env, model, {
       messages: [
         ...messages,
@@ -239,7 +412,7 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
       maxTokens: MAX_TOKENS,
     });
 
-    answer = toText(synthesis?.response).trim();
+    answer = extractTextToolCalls(toText(synthesis?.response), toolNames).text;
   }
 
   if (answer) {
@@ -248,6 +421,9 @@ export const runAgent = async ({ env, message, sessionId = "default", mode = "ra
       { role: "user", content: message },
       { role: "assistant", content: answer },
     ]);
+    log("agent", `Answer ready (${answer.length} chars)`, "success");
+  } else {
+    log("agent", "The model produced no answer text", "error");
   }
 
   return { output: answer, mode };

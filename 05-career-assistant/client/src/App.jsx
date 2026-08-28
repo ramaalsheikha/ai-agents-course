@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "./icons";
+import { LogPanel } from "./LogPanel";
+import { useActivityLog } from "./logs";
 import "./App.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
 
 function AgentCard({ name, label, status, detail, startTime }) {
-  const icons = { resume: "📄", market: "🔍", gap: "🎯" };
+  const icons = { resume: "document", market: "briefcase", gap: "chart" };
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -25,7 +28,7 @@ function AgentCard({ name, label, status, detail, startTime }) {
 
   return (
     <div className={`agentCard agentCard--${status}`}>
-      <div className="agentIcon">{icons[name]}</div>
+      <div className="agentIcon"><Icon name={icons[name]} size={22} /></div>
       <div className="agentName">{label}</div>
       <div className={`agentStatus agentStatus--${status}`}>{statusLabel}</div>
       {detail && status === "working" && (
@@ -39,12 +42,12 @@ function ScoreRing({ score }) {
   const r = 54;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const color = score >= 70 ? "#07DCA6" : score >= 40 ? "#F9E663" : "#ef4444";
+  const color = score >= 70 ? "#15803d" : score >= 40 ? "#b45309" : "#dc2626";
 
   return (
     <div className="scoreRing">
       <svg width="130" height="130" viewBox="0 0 130 130">
-        <circle cx="65" cy="65" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
+        <circle cx="65" cy="65" r={r} fill="none" stroke="rgba(16, 16, 20, 0.08)" strokeWidth="10" />
         <circle
           cx="65" cy="65" r={r} fill="none"
           stroke={color} strokeWidth="10"
@@ -60,7 +63,7 @@ function ScoreRing({ score }) {
 }
 
 function SeverityBadge({ severity }) {
-  const colors = { high: "#ef4444", medium: "#F9E663", low: "#07DCA6" };
+  const colors = { high: "#dc2626", medium: "#b45309", low: "#15803d" };
   return (
     <span className="badge" style={{ background: `${colors[severity]}22`, color: colors[severity], borderColor: `${colors[severity]}44` }}>
       {severity}
@@ -173,7 +176,7 @@ function ResultView({ data }) {
             {resources.map((r, i) => (
               <div key={i} className="resourceItem">
                 <span className="resourceType">
-                  {r.type === "course" ? "📚" : r.type === "cert" ? "🏆" : "🛠️"}
+                  <Icon name={r.type === "course" ? "book" : r.type === "cert" ? "award" : "tool"} size={20} />
                 </span>
                 <div>
                   <div className="resourceLabel">{r.type}</div>
@@ -320,6 +323,7 @@ function App() {
     market: { status: "pending", detail: "", startTime: null },
     gap: { status: "pending", detail: "", startTime: null },
   });
+  const { entries: logEntries, append: appendLog, clear: clearLog } = useActivityLog();
 
   const analyzingRef = useRef(false);
   const abortRef = useRef(null);
@@ -344,6 +348,7 @@ function App() {
     setResult(null);
     setError(null);
     setAgentStatuses(initialStatuses);
+    clearLog();
 
     try {
       const startRes = await fetch(`${API_URL}/api/career/start`, {
@@ -357,13 +362,21 @@ function App() {
       });
       const { sessionId } = await startRes.json();
 
+      appendLog({
+        component: "client",
+        message: `Session ${String(sessionId).slice(0, 8)}… opened, streaming pipeline events`,
+        status: "info",
+      });
+
       const es = new EventSource(`${API_URL}/api/career/stream?sessionId=${sessionId}`);
       abortRef.current = { abort: () => es.close() };
 
       es.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        if (data.type === "agent_status") {
+        if (data.type === "log") {
+          appendLog(data);
+        } else if (data.type === "agent_status") {
           setAgentStatuses((prev) => ({
             ...prev,
             [data.agent]: {
@@ -398,6 +411,11 @@ function App() {
       es.onerror = () => {
         if (analyzingRef.current) {
           setError("Connection lost. Please try again.");
+          appendLog({
+            component: "client",
+            message: "SSE connection lost before the analysis finished",
+            status: "error",
+          });
           setAnalyzing(false);
           analyzingRef.current = false;
         }
@@ -405,6 +423,11 @@ function App() {
       };
     } catch (err) {
       setError("Failed to start analysis. Please try again.");
+      appendLog({
+        component: "client",
+        message: `Failed to start analysis: ${err.message}`,
+        status: "error",
+      });
       setAnalyzing(false);
       analyzingRef.current = false;
     }
@@ -420,16 +443,17 @@ function App() {
     setResult(null);
     setError(null);
     setAgentStatuses(initialStatuses);
+    clearLog();
   };
 
-  const anyActive = analyzing || result !== null;
+  const anyActive = analyzing || result !== null || logEntries.length > 0;
   const canSubmit = resume.trim() && targetMarket.trim() && targetRole.trim() && !analyzing;
 
   return (
     <div className="appShell">
       <header className="appHeader">
         <div className="appHeaderInner">
-          <div className="appTitle">AI Career Assistant</div>
+          <div className="appTitle">Career Assistant</div>
           <div className="appSubtitle">Multi-agent career analysis with LangGraph</div>
         </div>
       </header>
@@ -443,7 +467,7 @@ function App() {
                 className="formTextarea"
                 value={resume}
                 onChange={(e) => setResume(e.target.value)}
-                placeholder="Paste your resume text here..."
+                placeholder="Paste your résumé text here"
                 disabled={analyzing}
                 rows={6}
               />
@@ -496,6 +520,10 @@ function App() {
               <AgentCard name="gap" label="Gap Analyst" status={agentStatuses.gap.status} detail={agentStatuses.gap.detail} startTime={agentStatuses.gap.startTime} />
             </div>
           </section>
+        )}
+
+        {anyActive && (
+          <LogPanel title="Pipeline Log" entries={logEntries} onClear={clearLog} />
         )}
 
         {error && (

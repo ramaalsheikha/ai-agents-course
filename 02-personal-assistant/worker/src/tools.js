@@ -3,7 +3,9 @@ import { normalizeText } from "../../shared/arabic.js";
 
 const SERPAPI_ENDPOINT = "https://serpapi.com/search.json";
 
-const searchSerpApi = async (env, engine, q, num = 5) => {
+const noop = () => {};
+
+const searchSerpApi = async (env, engine, q, num = 5, log = noop) => {
   if (!env.SERPAPI_API_KEY) throw new Error("SERPAPI_API_KEY is not set");
 
   const params = new URLSearchParams({
@@ -13,11 +15,16 @@ const searchSerpApi = async (env, engine, q, num = 5) => {
     api_key: env.SERPAPI_API_KEY,
   });
 
+  log("api", `Calling SerpAPI ${engine} for "${q}"...`, "pending");
+
   const res = await fetch(`${SERPAPI_ENDPOINT}?${params}`);
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    log("api", `SerpAPI responded ${res.status}`, "error");
     throw new Error(`SerpAPI error ${res.status}: ${body.slice(0, 500)}`);
   }
+
+  log("api", `SerpAPI responded ${res.status} OK`, "success");
 
   return res.json();
 };
@@ -36,9 +43,17 @@ export const searchKnowledgeBase = {
     },
     required: ["query"],
   },
-  handler: async (env, { query: searchQuery }) => {
+  handler: async (env, { query: searchQuery }, log = noop) => {
+    log("rag", `Searching Pinecone for "${searchQuery}"...`, "pending");
+
     const [vector] = await embed(env, [normalizeText(searchQuery)], "query");
     const matches = await query(env, vector, 4);
+
+    log(
+      "rag",
+      `Pinecone returned ${matches.length} match${matches.length === 1 ? "" : "es"}`,
+      "success",
+    );
 
     const passages = matches
       .filter((match) => match.metadata?.text)
@@ -52,8 +67,11 @@ export const searchKnowledgeBase = {
       });
 
     if (passages.length === 0) {
+      log("rag", "No passage carried usable text, answering without context", "error");
       return "No relevant information found in the knowledge base.";
     }
+
+    log("rag", `Grounding the answer in ${passages.length} passages`, "info");
 
     return passages.join("\n\n---\n\n");
   },
@@ -70,11 +88,13 @@ export const webSearch = {
     },
     required: ["query"],
   },
-  handler: async (env, { query: searchQuery }) => {
-    const data = await searchSerpApi(env, "google", searchQuery);
+  handler: async (env, { query: searchQuery }, log = noop) => {
+    const data = await searchSerpApi(env, "google", searchQuery, 5, log);
 
-    const results = (data.organic_results ?? [])
-      .slice(0, 5)
+    const organic = (data.organic_results ?? []).slice(0, 5);
+    log("api", `${organic.length} organic result${organic.length === 1 ? "" : "s"} kept`, "info");
+
+    const results = organic
       .map((r) => `**${r.title}**\n${r.link}\n${r.snippet ?? ""}`)
       .join("\n\n---\n\n");
 
@@ -93,11 +113,13 @@ export const imageSearch = {
     },
     required: ["query"],
   },
-  handler: async (env, { query: searchQuery }) => {
-    const data = await searchSerpApi(env, "google_images", searchQuery);
+  handler: async (env, { query: searchQuery }, log = noop) => {
+    const data = await searchSerpApi(env, "google_images", searchQuery, 5, log);
 
-    const results = (data.images_results ?? [])
-      .slice(0, 5)
+    const images = (data.images_results ?? []).slice(0, 5);
+    log("api", `${images.length} image result${images.length === 1 ? "" : "s"} kept`, "info");
+
+    const results = images
       .map(
         (r) =>
           `![${r.title ?? "Image"}](${r.original})${r.source ? `\n_Source: ${r.source}_` : ""}`,

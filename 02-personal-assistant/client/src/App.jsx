@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { ingestDocument, sendChat } from "./api";
+import { ingestDocument, streamChat } from "./api";
 import { toFriendlyMessage } from "./errors";
+import { Icon } from "./icons";
+import { LogPanel } from "./LogPanel";
+import { useActivityLog } from "./logs";
 import "./App.css";
 
 const MODES = ["rag", "api", "mcp"];
@@ -40,6 +43,7 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [mode, setMode] = useState("rag");
+  const { entries: logEntries, append: appendLog, clear: clearLog } = useActivityLog();
 
   const endOfMessagesRef = useRef(null);
 
@@ -55,14 +59,26 @@ function App() {
     setInput("");
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
 
+    appendLog({
+      component: "client",
+      message: `Sending message in ${mode.toUpperCase()} mode`,
+      status: "info",
+    });
+
     try {
-      const data = await sendChat({ message: trimmed, mode });
+      const data = await streamChat({ message: trimmed, mode, onLog: appendLog });
 
       setMessages((prev) => [
         ...prev,
         { role: "ai", text: data.answer, mode: data.mode ?? mode },
       ]);
     } catch (err) {
+      appendLog({
+        component: "client",
+        message: `Request failed: ${err.message}`,
+        status: "error",
+      });
+
       setMessages((prev) => [
         ...prev,
         { role: "ai", text: toFriendlyMessage(err), isError: true },
@@ -77,6 +93,11 @@ function App() {
 
     setUploading(true);
     setUploadStatus(null);
+    appendLog({
+      component: "ingest",
+      message: `Uploading ${selectedFile.name} (${Math.round(selectedFile.size / 1024)} KB)...`,
+      status: "pending",
+    });
 
     try {
       const data = await ingestDocument(selectedFile);
@@ -85,9 +106,19 @@ function App() {
         text: describeIngest(data, selectedFile.name),
         isError: false,
       });
+      appendLog({
+        component: "ingest",
+        message: describeIngest(data, selectedFile.name),
+        status: "success",
+      });
       setSelectedFile(null);
     } catch (err) {
       setUploadStatus({ text: toFriendlyMessage(err), isError: true });
+      appendLog({
+        component: "ingest",
+        message: `Upload failed: ${err.message}`,
+        status: "error",
+      });
     } finally {
       setUploading(false);
     }
@@ -104,7 +135,7 @@ function App() {
     <div className="appShell">
       <header className="appHeader">
         <div className="appHeaderInner">
-          <div className="appTitle">Agentic Personal Assistant</div>
+          <div className="appTitle">Personal Assistant</div>
           <div className="appSubtitle">Upload PDFs, then chat with your knowledge base.</div>
           <div className="modeToggle">
             {MODES.map((m) => (
@@ -147,7 +178,7 @@ function App() {
           </div>
           {uploadStatus && (
             <div className={`uploadStatus${uploadStatus.isError ? " isError" : ""}`}>
-              {uploadStatus.isError && <span className="warningIcon">⚠️</span>}
+              {uploadStatus.isError && <Icon name="alert" size={15} className="warningIcon" />}
               {uploadStatus.text}
             </div>
           )}
@@ -171,9 +202,7 @@ function App() {
                   )}
                   {m.isError ? (
                     <div className="errorContent">
-                      <span className="warningIcon" role="img" aria-label="Warning">
-                        ⚠️
-                      </span>
+                      <Icon name="alert" size={15} className="warningIcon" />
                       <span>{m.text}</span>
                     </div>
                   ) : m.role === "ai" ? (
@@ -214,6 +243,8 @@ function App() {
             <div className="composerHint">Enter to send · Shift+Enter for a new line</div>
           </div>
         </section>
+
+        <LogPanel title="Debug Log" entries={logEntries} onClear={clearLog} />
       </main>
     </div>
   );

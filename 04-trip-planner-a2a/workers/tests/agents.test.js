@@ -158,7 +158,12 @@ describe("a2a envelope", () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body.error).toEqual({ code: -32603, message: "model unavailable" });
+    expect(body.error.code).toBe(-32603);
+    expect(body.error.message).toBe("model unavailable");
+    expect(body.error.data.logs.at(-1)).toMatchObject({
+      component: "agent",
+      status: "error",
+    });
   });
 });
 

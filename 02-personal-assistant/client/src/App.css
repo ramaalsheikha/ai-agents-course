@@ -82,8 +82,8 @@
 .primaryButton {
   padding: 9px 12px;
   border-radius: 12px;
-  background: #0a7f63;
-  border: 1px solid rgba(16, 163, 127, 0.4);
+  background: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.4);
   color: white;
 }
 
@@ -155,9 +155,9 @@
 }
 
 .messageRow.isUser .messageBubble {
-  background: #0a7f63;
+  background: #2563eb;
   color: #ffffff;
-  border: 1px solid rgba(16, 163, 127, 0.35);
+  border: 1px solid rgba(37, 99, 235, 0.35);
 }
 
 .messageRow.isAi .messageBubble {
@@ -189,6 +189,7 @@
 .composerInput {
   flex: 1;
   resize: none;
+  font-family: inherit;
   border: none;
   outline: none;
   background: transparent;
@@ -245,29 +246,10 @@
   color: rgba(24, 24, 27, 0.85);
 }
 
-/* Active states per mode */
-.modeButton--rag.isActive {
-  background: rgba(139, 92, 246, 0.18);
-  border-color: rgba(139, 92, 246, 0.5);
-  color: #6d28d9;
-}
-
-.modeButton--api.isActive {
-  background: rgba(234, 179, 8, 0.15);
-  border-color: rgba(234, 179, 8, 0.45);
-  color: #854d0e;
-}
-
-.modeButton--mcp.isActive {
-  background: rgba(34, 197, 94, 0.15);
-  border-color: rgba(34, 197, 94, 0.4);
-  color: #15803d;
-}
-
-.modeButton--mcp-stdio.isActive {
-  background: rgba(251, 191, 36, 0.12);
-  border-color: rgba(251, 191, 36, 0.4);
-  color: #a16207;
+.modeButton.isActive {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.35);
+  color: #1d4ed8;
 }
 
 .modeDescription {
@@ -288,30 +270,9 @@
   letter-spacing: 0.6px;
   text-transform: uppercase;
   margin-bottom: 6px;
-}
-
-.modeBadge--rag {
-  background: rgba(139, 92, 246, 0.2);
-  color: #6d28d9;
-  border: 1px solid rgba(139, 92, 246, 0.35);
-}
-
-.modeBadge--api {
-  background: rgba(234, 179, 8, 0.18);
-  color: #854d0e;
-  border: 1px solid rgba(234, 179, 8, 0.35);
-}
-
-.modeBadge--mcp {
-  background: rgba(34, 197, 94, 0.15);
-  color: #15803d;
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
-
-.modeBadge--mcp-stdio {
-  background: rgba(251, 191, 36, 0.12);
-  color: #a16207;
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(16, 16, 20, 0.05);
+  color: rgba(24, 24, 27, 0.62);
+  border: 1px solid rgba(16, 16, 20, 0.1);
 }
 
 /* ── Images inside message bubbles ───────────────────────── */
@@ -341,8 +302,8 @@
 
 .warningIcon {
   flex-shrink: 0;
-  font-size: 14px;
-  line-height: 1.45;
+  margin-top: 2px;
+  color: #dc2626;
 }
 
 .uploadStatus.isError {
@@ -354,4 +315,197 @@
   border-radius: 10px;
   background: rgba(239, 68, 68, 0.08);
   color: #b91c1c;
+}
+
+/* ── Activity log panel ───────────────────────────────────── */
+
+.logPanel {
+  background: #ececef;
+  border: 1px solid rgba(16, 16, 20, 0.1);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.logPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px 6px 4px;
+  border-bottom: 1px solid rgba(16, 16, 20, 0.06);
+}
+
+.logPanelToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(24, 24, 27, 0.6);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.logPanelToggle:hover {
+  background: rgba(16, 16, 20, 0.04);
+  border-color: transparent;
+  color: rgba(24, 24, 27, 0.82);
+}
+
+.logPanelToggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.logPanelChevron {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.logPanelTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logPanelCount {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(16, 16, 20, 0.08);
+  color: rgba(24, 24, 27, 0.6);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.logPanelActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.logPanelButton {
+  padding: 5px 11px;
+  border: 1px solid rgba(16, 16, 20, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  color: rgba(24, 24, 27, 0.75);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.logPanelButton:hover:not(:disabled) {
+  border-color: rgba(37, 99, 235, 0.45);
+  color: #1d4ed8;
+}
+
+.logPanelButton:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.logPanelButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.logPanelBody {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+  font-size: 12px;
+  padding: 8px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.logPanelEmpty {
+  padding: 8px 16px;
+  color: rgba(24, 24, 27, 0.45);
+}
+
+.logEntry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 16px;
+  line-height: 1.5;
+}
+
+.logEntry:hover {
+  background: rgba(16, 16, 20, 0.03);
+}
+
+.logEntryDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: center;
+  background: currentColor;
+}
+
+.logEntryTime {
+  color: rgba(24, 24, 27, 0.4);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.logEntryComponent {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.logEntryMessage {
+  color: rgba(24, 24, 27, 0.75);
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.logEntryStatus {
+  flex-shrink: 0;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.logEntry--info {
+  color: #2563eb;
+}
+
+.logEntry--success {
+  color: #15803d;
+}
+
+.logEntry--pending {
+  color: #b45309;
+}
+
+.logEntry--error {
+  color: #dc2626;
+}
+
+.logEntry--error .logEntryMessage {
+  color: #b91c1c;
+}
+
+@media (max-width: 560px) {
+  .logEntry {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .logEntryStatus {
+    display: none;
+  }
 }

@@ -33,3 +33,14 @@ export const toStructured = (value) => {
   const payload = value.response;
   return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
 };
+
+export const tokensOf = (value) => {
+  const usage = value?.usage ?? value?.response?.usage;
+  const total = usage?.total_tokens ?? usage?.totalTokens;
+  return Number.isFinite(total) ? total : null;
+};
+
+export const describeTokens = (value) => {
+  const total = tokensOf(value);
+  return total === null ? "" : ` (${total} tokens)`;
+};

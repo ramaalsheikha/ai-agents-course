@@ -1,5 +1,5 @@
 import { createAgentApp } from "../../shared/a2a.js";
-import { textModel, toText } from "../../shared/ai.js";
+import { describeTokens, textModel, toText } from "../../shared/ai.js";
 
 const MAX_TOKENS = 768;
 
@@ -19,14 +19,20 @@ const CARD = {
   ],
 };
 
-const run = async ({ env, text }) => {
+const run = async ({ env, text, log }) => {
+  log("agent", "Budget agent received task", "info");
+  log("llm", `Calculating budget breakdown with ${textModel(env)}...`, "pending");
+
   const response = await env.AI.run(textModel(env), {
     messages: [{ role: "user", content: text }],
     max_tokens: MAX_TOKENS,
   });
 
   const breakdown = toText(response).trim();
-  console.log(`[budget-agent] Breakdown ready (${breakdown.length} chars)`);
+
+  log("llm", `Breakdown generated${describeTokens(response)}`, "success");
+  log("agent", `Breakdown ready (${breakdown.length} chars)`, "success");
+
   return breakdown;
 };
 

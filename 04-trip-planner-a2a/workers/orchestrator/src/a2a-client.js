@@ -29,8 +29,16 @@ export const sendTask = async (service, agentName, taskId, text) => {
 
   const body = await res.json().catch(() => null);
 
-  if (body?.error) throw new Error(`${agentName}: ${body.error.message}`);
+  if (body?.error) {
+    const error = new Error(`${agentName}: ${body.error.message}`);
+    error.logs = body.error.data?.logs ?? [];
+    throw error;
+  }
+
   if (!res.ok) throw new Error(`${agentName} returned ${res.status}`);
 
-  return body?.result?.artifacts?.[0]?.parts?.[0]?.text ?? "";
+  return {
+    text: body?.result?.artifacts?.[0]?.parts?.[0]?.text ?? "",
+    logs: body?.result?.metadata?.logs ?? [],
+  };
 };
