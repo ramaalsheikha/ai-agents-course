@@ -17,6 +17,12 @@ service = "a2a-budget-agent"
 binding = "ITINERARY"
 service = "a2a-itinerary-agent"
 
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1003"
+simple = { limit = 20, period = 60 }
+
 [vars]
 CLIENT_ORIGIN = "http://localhost:5175,https://trip-planner-a2a.pages.dev"
 CLIENT_ORIGIN_SUFFIXES = ".trip-planner-a2a.pages.dev"

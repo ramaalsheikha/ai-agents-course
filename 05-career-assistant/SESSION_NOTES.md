@@ -86,7 +86,7 @@ Still Express, still `ChatAnthropic`, still runnable with `npm run dev:server`. 
 | Pages (this deploy) | https://a5b318af.career-assistant-3by.pages.dev |
 | KV namespace `SESSIONS` | `537fc6a979ac471c82907787a859bd62` |
 | Worker version | `eda8e10e-620c-45a0-a068-0f88a0086098` |
-| Account | `e524b4a1ac42eea56ccb0651083b2f9f` |
+| Account | `<account id — Cloudflare dashboard>` |
 
 `SERPAPI_API_KEY` is a Worker secret, uploaded with `wrangler secret put` from the value already in `server/.env`. `worker/.dev.vars` holds a placeholder for local runs and is gitignored.
 

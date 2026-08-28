@@ -12,6 +12,12 @@ binding = "AI"
 binding = "MCP"
 service = "mcp-search-server"
 
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
+
 [vars]
 TEXT_MODEL = "@cf/openai/gpt-oss-120b"
 JSON_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"

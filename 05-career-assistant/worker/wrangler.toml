@@ -13,6 +13,12 @@ binding = "AI"
 binding = "SESSIONS"
 id = "537fc6a979ac471c82907787a859bd62"
 
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1004"
+simple = { limit = 20, period = 60 }
+
 [vars]
 AI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 CLIENT_ORIGIN = "http://localhost:5175,https://career-assistant-3by.pages.dev"

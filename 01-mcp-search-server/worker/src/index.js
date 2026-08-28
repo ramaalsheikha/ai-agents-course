@@ -119,7 +119,11 @@ const handleMessage = async (env, message) => {
 };
 
 const isAuthorized = (request, env) => {
-  if (!env.MCP_AUTH_TOKEN) return true;
+  if (!env.MCP_AUTH_TOKEN) {
+    console.error("MCP_AUTH_TOKEN is not set — refusing every request");
+    return false;
+  }
+
   return request.headers.get("authorization") === `Bearer ${env.MCP_AUTH_TOKEN}`;
 };
 

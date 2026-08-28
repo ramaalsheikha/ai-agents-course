@@ -75,7 +75,7 @@ Same `isAllowedOrigin` as `02` and `05`: exact-match list plus an https-only suf
 | Pages (production) | https://trip-planner-8xe.pages.dev |
 | Pages (this deploy) | https://95a96b87.trip-planner-8xe.pages.dev |
 | Service Binding target | `mcp-search-server` (version `4617a6cb`) |
-| Account | `e524b4a1ac42eea56ccb0651083b2f9f` |
+| Account | `<account id — Cloudflare dashboard>` |
 
 No KV namespace and no new secrets on the MCP server side.
 

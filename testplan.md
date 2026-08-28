@@ -270,17 +270,20 @@ MCP-09, PA-04, PA-17, TP-13, A2A-10, CA-08, CA-09 document defects that are open
 - No stack trace or worker internals in the body.
 
 ### MCP-09 — Auth fails open when the secret is missing
-**Known issue**
+**Known issue — fixed 2026-08-28**
+
+> `isAuthorized` now returns `false` and logs when `MCP_AUTH_TOKEN` is unset. This case is expected to **pass** from now on: an unauthenticated call must be refused whether or not the secret is present.
 
 **Steps**
-1. Read `01-mcp-search-server/worker/src/index.js:122` and confirm the line `if (!env.MCP_AUTH_TOKEN) return true;` is still present.
+1. Read `01-mcp-search-server/worker/src/index.js:122` and confirm the guard returns `false` when the token is unset.
 2. In a *throwaway* worker or `wrangler dev` session with no `MCP_AUTH_TOKEN` set, POST `tools/list` with no `Authorization` header.
 3. Record the result and stop.
 
 > **Do not** unset or clear the secret on the deployed `mcp-search-server`. Four workers authenticate against it, and clearing it would open the public endpoint rather than break it visibly.
 
 **Expected**
-- *Today:* the unauthenticated call succeeds and returns the tool list — the defect reproduces.
+- *Before the fix:* the unauthenticated call succeeded and returned the tool list.
+- *Now:* every request is refused with 401 while the secret is missing.
 - *After the fix:* a missing secret should reject every request, or refuse to boot, so a lost secret fails loudly instead of silently opening the endpoint.
 - MCP-02 must still pass afterwards, on all four consuming workers.
 

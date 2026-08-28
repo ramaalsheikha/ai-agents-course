@@ -15,6 +15,16 @@ app.use("/api/*", (c, next) =>
   })(c, next),
 );
 
+app.use("/api/*", async (c, next) => {
+  if (!c.env.RATE_LIMITER) return next();
+
+  const ip = c.req.header("cf-connecting-ip") ?? "anonymous";
+  const { success } = await c.env.RATE_LIMITER.limit({ key: ip });
+
+  if (!success) return c.json({ error: "Too many requests" }, 429);
+  return next();
+});
+
 const positiveInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;

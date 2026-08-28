@@ -15,6 +15,16 @@ app.use("/api/*", (c, next) =>
   })(c, next),
 );
 
+app.use("/api/*", async (c, next) => {
+  if (!c.env.RATE_LIMITER) return next();
+
+  const ip = c.req.header("cf-connecting-ip") ?? "anonymous";
+  const { success } = await c.env.RATE_LIMITER.limit({ key: ip });
+
+  if (!success) return c.json({ error: "Too many requests" }, 429);
+  return next();
+});
+
 const SESSION_TTL_SECONDS = 600;
 
 app.post("/api/career/start", async (c) => {

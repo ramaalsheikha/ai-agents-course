@@ -64,7 +64,7 @@ A2A messages carry text parts, not structured params, so the itinerary agent has
 | Itinerary agent | `a2a-itinerary-agent` (`c060d26a-2369-4c93-a3cd-9a6c66f7a422`), no public route |
 | Pages (production) | https://trip-planner-a2a.pages.dev |
 | Pages (this deploy) | https://1d2c7faf.trip-planner-a2a.pages.dev |
-| Account | `e524b4a1ac42eea56ccb0651083b2f9f` |
+| Account | `<account id — Cloudflare dashboard>` |
 
 No KV namespace. One secret outstanding — see §7.
 
