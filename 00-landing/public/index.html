@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Agents — Deployed Projects</title>
-<meta name="description" content="Four AI agent projects deployed on Cloudflare Workers AI and Pages.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<title>Agent Platform</title>
+<meta name="description" content="Four production agent applications running on Cloudflare Workers and Pages.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><path d='M9 21.5 16 9l7 12.5' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/><path d='M12.2 18.4h7.6' stroke='white' stroke-width='2.6' stroke-linecap='round'/></svg>">
 <style>
 :root {
   --bg: #f7f7f8;
@@ -14,7 +14,8 @@
   --border-hover: #c4c4cc;
   --text: #18181b;
   --text-muted: #6b6b76;
-  --accent: #4f46e5;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
   --shadow: 0 1px 2px rgba(16, 16, 20, .06), 0 8px 24px rgba(16, 16, 20, .06);
   --shadow-hover: 0 2px 4px rgba(16, 16, 20, .08), 0 16px 40px rgba(16, 16, 20, .12);
   --radius: 14px;
@@ -167,6 +168,11 @@ body {
   transform: translateX(3px);
 }
 
+.card:hover .card__link,
+.card:focus-visible .card__link {
+  color: var(--accent-strong);
+}
+
 .colophon {
   margin-top: 3rem;
   padding-top: 1.5rem;
@@ -185,35 +191,35 @@ body {
 <div class="page">
 
   <header class="masthead">
-    <p class="masthead__eyebrow">Rama Alsheikha</p>
-    <h1 class="masthead__title">AI Agents</h1>
-    <p class="masthead__subtitle">Four agent projects, live on Cloudflare Workers AI and Pages.</p>
+    <p class="masthead__eyebrow">Production deployments</p>
+    <h1 class="masthead__title">Agent Platform</h1>
+    <p class="masthead__subtitle">Four production applications for document retrieval, itinerary planning, and career analysis — running on Cloudflare Workers and Pages.</p>
   </header>
 
   <main>
-    <h2 class="visually-hidden">Deployed projects</h2>
+    <h2 class="visually-hidden">Applications</h2>
     <ul class="projects">
 
       <li>
         <a class="card" href="https://personal-assistant-8ve.pages.dev">
           <h3 class="card__name">Personal Assistant</h3>
-          <p class="card__description">Chat with your documents + web search</p>
+          <p class="card__description">Query your document library alongside live web search</p>
           <span class="card__link">personal-assistant-8ve.pages.dev</span>
         </a>
       </li>
 
       <li>
         <a class="card" href="https://trip-planner-8xe.pages.dev">
-          <h3 class="card__name">Trip Planner (LangGraph)</h3>
-          <p class="card__description">AI trip planning with LangGraph</p>
+          <h3 class="card__name">Trip Planner</h3>
+          <p class="card__description">Itinerary planning on a LangGraph workflow</p>
           <span class="card__link">trip-planner-8xe.pages.dev</span>
         </a>
       </li>
 
       <li>
         <a class="card" href="https://trip-planner-a2a.pages.dev">
-          <h3 class="card__name">Trip Planner (Multi-Agent)</h3>
-          <p class="card__description">4 AI agents collaborating to plan trips</p>
+          <h3 class="card__name">Trip Planner — Multi-Agent</h3>
+          <p class="card__description">Four independent agents coordinating over the A2A protocol</p>
           <span class="card__link">trip-planner-a2a.pages.dev</span>
         </a>
       </li>
@@ -221,7 +227,7 @@ body {
       <li>
         <a class="card" href="https://career-assistant-3by.pages.dev">
           <h3 class="card__name">Career Assistant</h3>
-          <p class="card__description">Resume analysis + job market research</p>
+          <p class="card__description">Résumé analysis against live job market data</p>
           <span class="card__link">career-assistant-3by.pages.dev</span>
         </a>
       </li>
@@ -230,7 +236,7 @@ body {
   </main>
 
   <footer class="colophon">
-    <p>Built with Cloudflare Workers AI, Pages, Vectorize, and KV.</p>
+    <p>Built on Cloudflare Workers, Pages, Vectorize, and KV.</p>
   </footer>
 
 </div>
